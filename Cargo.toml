@@ -1,0 +1,15 @@
+[package]
+name = "tanks-rewrite"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "0.14", features = ["full"] }
+tokio-rustls = "0.23"
+rustls = "0.20"
+rustls-pemfile = "1.0"
+rand = "0.8"
+serde_json = "1.0"
+
+
