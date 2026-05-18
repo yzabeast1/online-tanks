@@ -1,5 +1,5 @@
-mod structs;
 mod cards;
+mod structs;
 use structs::*;
 
 use std::{convert::Infallible, fs::File, io::BufReader, net::SocketAddr, sync::Arc};
@@ -106,7 +106,10 @@ fn load_private_key(path: &str) -> PrivateKey {
     panic!("no private keys found in {}", path);
 }
 
-async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<Response<Body>, Infallible> {
+async fn handle_request(
+    req: Request<Body>,
+    state: Arc<ServerState>,
+) -> Result<Response<Body>, Infallible> {
     let path = req.uri().path().to_string();
     match (req.method(), path.as_str()) {
         (&Method::GET, "/") | (&Method::GET, "/index.html") => {
@@ -117,7 +120,11 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
             let p = format!("{}/css.css", JS_TANKS_WEBSITE_DIR);
             serve_file(&p, "text/css; charset=utf-8").await
         }
-        (&Method::GET, "/gameScreen.js") | (&Method::GET, "/lobby.js") | (&Method::GET, "/networkFunctions.js") | (&Method::GET, "/playCard.js") | (&Method::GET, "/chat.js") => {
+        (&Method::GET, "/gameScreen.js")
+        | (&Method::GET, "/lobby.js")
+        | (&Method::GET, "/networkFunctions.js")
+        | (&Method::GET, "/playCard.js")
+        | (&Method::GET, "/chat.js") => {
             let p = format!("{}/{}", JS_TANKS_WEBSITE_DIR, &path[1..]);
             serve_file(&p, "application/javascript").await
         }
@@ -150,7 +157,10 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                     match lobbies.get_mut(&joincode) {
                         Some(players) => {
                             if players.iter().any(|player| player == &username) {
-                                Ok(text_response(StatusCode::OK, "no duplicate usernames allowed"))
+                                Ok(text_response(
+                                    StatusCode::OK,
+                                    "no duplicate usernames allowed",
+                                ))
                             } else {
                                 players.push(username);
                                 Ok(text_response(StatusCode::OK, "joined game lobby"))
@@ -159,7 +169,10 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                         None => Ok(text_response(StatusCode::OK, "game does not exist")),
                     }
                 }
-                _ => Ok(text_response(StatusCode::BAD_REQUEST, "missing username or joincode")),
+                _ => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing username or joincode",
+                )),
             }
         }
         (&Method::POST, "/leaveLobby") => {
@@ -170,7 +183,9 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                     let mut lobbies = state.lobbies.lock().unwrap();
                     match lobbies.get_mut(&joincode) {
                         Some(players) => {
-                            if let Some(index) = players.iter().position(|player| player == &username) {
+                            if let Some(index) =
+                                players.iter().position(|player| player == &username)
+                            {
                                 players.remove(index);
                                 if players.is_empty() {
                                     lobbies.remove(&joincode);
@@ -183,7 +198,10 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                         None => Ok(text_response(StatusCode::OK, "game does not exist")),
                     }
                 }
-                _ => Ok(text_response(StatusCode::BAD_REQUEST, "missing username or joincode")),
+                _ => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing username or joincode",
+                )),
             }
         }
         (&Method::GET, "/lobbyState") => {
@@ -192,8 +210,14 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                 Some(joincode) => {
                     let lobbies = state.lobbies.lock().unwrap();
                     match lobbies.get(&joincode) {
-                        Some(players) => Ok(json_response(StatusCode::OK, serde_json::to_string(players).unwrap())),
-                        None => Ok(text_response(StatusCode::NOT_FOUND, "lobby not found for the given joincode")),
+                        Some(players) => Ok(json_response(
+                            StatusCode::OK,
+                            serde_json::to_string(players).unwrap(),
+                        )),
+                        None => Ok(text_response(
+                            StatusCode::NOT_FOUND,
+                            "lobby not found for the given joincode",
+                        )),
                     }
                 }
                 None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
@@ -204,11 +228,19 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
             match joincode {
                 Some(joincode) => {
                     let mut lobbies = state.lobbies.lock().unwrap();
-                    if lobbies.remove(&joincode).is_some() {
-                        state.started_games.lock().unwrap().insert(joincode);
-                        Ok(text_response(StatusCode::OK, "Game Started"))
-                    } else {
-                        Ok(text_response(StatusCode::NOT_FOUND, "game does not exist"))
+                    match lobbies.remove(&joincode) {
+                        Some(players) => {
+                            let mut game_state = GameState::new(joincode.clone(), players.len());
+                            game_state.start_game();
+                            state
+                                .games
+                                .lock()
+                                .unwrap()
+                                .insert(joincode.clone(), game_state);
+                            state.started_games.lock().unwrap().insert(joincode.clone());
+                            Ok(text_response(StatusCode::OK, "Game Started"))
+                        }
+                        None => Ok(text_response(StatusCode::NOT_FOUND, "game does not exist")),
                     }
                 }
                 None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
@@ -219,7 +251,10 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
             match joincode {
                 Some(joincode) => {
                     let started = state.started_games.lock().unwrap().contains(&joincode);
-                    Ok(text_response(StatusCode::OK, if started { "yes" } else { "no" }))
+                    Ok(text_response(
+                        StatusCode::OK,
+                        if started { "yes" } else { "no" },
+                    ))
                 }
                 None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
             }
@@ -233,8 +268,27 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .unwrap()),
-        (&Method::POST, "/endTurn")
-        | (&Method::POST, "/playCard")
+        (&Method::POST, "/endTurn") => {
+            let joincode = header_value(&req, "joincode");
+            match joincode {
+                Some(joincode) => {
+                    let mut games = state.games.lock().unwrap();
+                    match games.get_mut(&joincode) {
+                        Some(game) => {
+                            game.next_turn();
+                            let body = serde_json::to_string(&serde_json::json!({"current_turn_player": game.current_turn_player})).unwrap();
+                            Ok(json_response(StatusCode::OK, body))
+                        }
+                        None => Ok(text_response(
+                            StatusCode::NOT_FOUND,
+                            "game not found for joincode",
+                        )),
+                    }
+                }
+                None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
+            }
+        }
+        (&Method::POST, "/playCard")
         | (&Method::POST, "/quitGame")
         | (&Method::POST, "/sendChat")
         | (&Method::POST, "/activateDelayedCard")

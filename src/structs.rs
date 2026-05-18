@@ -1,6 +1,9 @@
 use hyper::{Body, Request};
-use std::collections::{HashMap, HashSet, VecDeque};
+use rand::Rng;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+
+use crate::cards::all_cards;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CardType {
     Support,
@@ -39,7 +42,7 @@ pub struct Card {
     pub card_type: CardType,
     pub can_be_played: fn(&Card, &GameState, &Request<Body>) -> bool,
     pub play: fn(&Card, &mut GameState, usize),
-    pub count:usize,
+    pub count: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -59,12 +62,9 @@ impl Player {
             health: 10,
         };
     }
-
-    pub fn draw_card(&mut self, card: Card) {
-        self.hand.push(card);
-    }
 }
 
+#[derive(Debug)]
 pub struct TurnState {
     pub shooting_card_played: usize,
     pub more_ammo_played: bool,
@@ -85,17 +85,20 @@ impl TurnState {
     }
 }
 
+#[derive(Debug)]
 pub struct active_calculated_shooting {
     pub owner: usize,
     pub turns_remaining: usize,
     pub when_done: fn(),
     pub card_played: Card,
 }
+#[derive(Debug)]
 pub struct active_fiting_filter {
     pub owner: usize,
     pub filter_type: ShootingType,
 }
 
+#[derive(Debug)]
 pub struct ActiveCards {
     pub landmine_played_by: isize,
     pub active_calculated_shootings: Vec<active_calculated_shooting>,
@@ -112,12 +115,13 @@ impl ActiveCards {
     }
 }
 
+#[derive(Debug)]
 pub struct GameState {
     pub players: Vec<Player>,
     pub id: String,
     pub current_turn_player: usize,
-    pub draw_pile: VecDeque<Card>,
-    pub discard_pile: VecDeque<Card>,
+    pub draw_pile: Vec<Card>,
+    pub discard_pile: Vec<Card>,
     pub no_shooting_played_by: isize,
     pub turn_state: TurnState,
     pub active_cards: ActiveCards,
@@ -127,6 +131,7 @@ pub struct GameState {
 pub struct ServerState {
     pub lobbies: Mutex<HashMap<String, Vec<String>>>,
     pub started_games: Mutex<HashSet<String>>,
+    pub games: Mutex<HashMap<String, GameState>>,
 }
 
 impl ServerState {
@@ -134,6 +139,7 @@ impl ServerState {
         Self {
             lobbies: Mutex::new(HashMap::new()),
             started_games: Mutex::new(HashSet::new()),
+            games: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -149,21 +155,36 @@ impl GameState {
             players,
             id: game_id,
             current_turn_player: 0,
-            draw_pile: VecDeque::new(),
-            discard_pile: VecDeque::new(),
+            draw_pile: Vec::new(),
+            discard_pile: Vec::new(),
             no_shooting_played_by: -1,
             turn_state: TurnState::new(),
             active_cards: ActiveCards::new(),
         };
     }
 
-    pub fn next_turn(&mut self) {
-        self.turn_state = TurnState::new();
-        self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
+    pub fn start_game(&mut self) {
+        self.current_turn_player = rand::thread_rng().gen_range(0..self.players.len());
+        self.draw_pile = all_cards();
+        self.draw_initial_hand();
+        self.next_turn();
     }
 
-    pub fn draw_card(&mut self) -> Option<Card> {
-        return self.draw_pile.pop_front();
+    pub fn next_turn(&mut self) {
+        self.turn_state = TurnState::new();
+        for calculated_shooting in self.active_cards.active_calculated_shootings.iter_mut() {
+            if calculated_shooting.owner == self.players[self.current_turn_player].id {
+                calculated_shooting.turns_remaining -= 1;
+            }
+        }
+        self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
+        self.draw_card(self.current_turn_player);
+    }
+
+    pub fn draw_card(&mut self, player_index: usize) {
+        if let Some(card) = self.draw_pile.pop() {
+            self.players[player_index].hand.push(card);
+        }
     }
 
     pub fn player_by_id(&self, player_id: usize) -> Option<&Player> {
@@ -179,9 +200,7 @@ impl GameState {
     pub fn draw_initial_hand(&mut self) {
         for i in 0..self.players.len() {
             for _ in 0..4 {
-                if let Some(card) = self.draw_card() {
-                    self.players[i].hand.push(card);
-                }
+                self.draw_card(i);
             }
         }
     }
