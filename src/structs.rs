@@ -1,5 +1,6 @@
 use hyper::{Body, Request};
-use rand::Rng;
+use rand::{Rng, thread_rng};
+use rand::seq::SliceRandom;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
@@ -182,6 +183,11 @@ impl GameState {
     }
 
     pub fn draw_card(&mut self, player_index: usize) {
+        if self.draw_pile.is_empty() {
+            self.discard_pile.shuffle(&mut thread_rng());
+            self.draw_pile = std::mem::take(&mut self.discard_pile);
+            self.discard_pile=Vec::new();
+        }
         if let Some(card) = self.draw_pile.pop() {
             self.players[player_index].hand.push(card);
         }
