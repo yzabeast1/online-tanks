@@ -11,6 +11,8 @@ use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 
+use crate::cards::all_cards;
+
 const JS_TANKS_SERVER_DIR: &str = "/home/yehoshua/git-repos/js-tanks/server";
 const JS_TANKS_WEBSITE_DIR: &str = "/home/yehoshua/git-repos/js-tanks/website";
 
@@ -260,14 +262,13 @@ async fn handle_request(
             }
         }
         // Keep the rest as placeholders for now.
-        (&Method::GET, "/cardInfo")
-        | (&Method::GET, "/gameState")
-        | (&Method::GET, "/getChat")
-        | (&Method::GET, "/getDeck") => Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header("content-type", "application/json")
-            .body(Body::from("{}"))
-            .unwrap()),
+        (&Method::GET, "/cardInfo") | (&Method::GET, "/gameState") | (&Method::GET, "/getChat") => {
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap())
+        }
         (&Method::POST, "/endTurn") => {
             let joincode = header_value(&req, "joincode");
             match joincode {
@@ -296,6 +297,11 @@ async fn handle_request(
             .status(StatusCode::OK)
             .header("content-type", "application/json")
             .body(Body::from("{}"))
+            .unwrap()),
+        (&Method::GET, "/getDeck") => Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&all_cards()).unwrap()))
             .unwrap()),
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)

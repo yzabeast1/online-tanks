@@ -3,16 +3,17 @@ use rand::{Rng, thread_rng};
 use rand::seq::SliceRandom;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use serde::Serialize;
 
 use crate::cards::all_cards;
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
 pub enum CardType {
     Support,
     Plus,
     Shooting(ShootingType),
     Event,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
 pub enum ShootingType {
     Quick,
     Calculated,
@@ -36,13 +37,16 @@ impl CardType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Card {
     pub name: String,
     pub id: String,
     pub card_type: CardType,
+    #[serde(skip)]
     pub can_be_played: fn(&Card, &GameState, &Request<Body>) -> bool,
+    #[serde(skip)]
     pub play: fn(&Card, &mut GameState, usize),
+    #[serde(skip)]
     pub count: usize,
 }
 
