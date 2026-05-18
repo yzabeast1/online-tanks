@@ -105,6 +105,7 @@ fn load_private_key(path: &str) -> PrivateKey {
 
     panic!("no private keys found in {}", path);
 }
+
 async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<Response<Body>, Infallible> {
     let path = req.uri().path().to_string();
     match (req.method(), path.as_str()) {

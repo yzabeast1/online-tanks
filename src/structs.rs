@@ -1,3 +1,4 @@
+use hyper::{Body, Request};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -35,30 +36,10 @@ impl CardType {
 pub struct Card {
     pub name: String,
     pub id: String,
-    pub image_path: String,
     pub card_type: CardType,
-    pub can_be_played: fn(&Card, &GameState) -> bool,
+    pub can_be_played: fn(&Card, &GameState, &Request<Body>) -> bool,
     pub play: fn(&Card, &mut GameState, usize),
-}
-
-impl Card {
-    pub fn new(
-        name: String,
-        id: String,
-        image_path: String,
-        card_type: CardType,
-        can_be_played: fn(&Card, &GameState) -> bool,
-        play: fn(&Card, &mut GameState, usize),
-    ) -> Self {
-        return Card {
-            name,
-            id,
-            image_path,
-            card_type,
-            can_be_played,
-            play,
-        };
-    }
+    pub count:usize,
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +47,7 @@ pub struct Player {
     pub name: String,
     pub id: usize,
     pub hand: Vec<Card>,
+    pub health: usize,
 }
 
 impl Player {
@@ -74,6 +56,7 @@ impl Player {
             name,
             id,
             hand: Vec::new(),
+            health: 10,
         };
     }
 
@@ -86,6 +69,7 @@ pub struct TurnState {
     pub shooting_card_played: usize,
     pub more_ammo_played: bool,
     pub event_card_played: bool,
+    pub no_shooting_played: bool,
     pub total_cards_played: usize,
 }
 
@@ -95,7 +79,35 @@ impl TurnState {
             shooting_card_played: 0,
             more_ammo_played: false,
             event_card_played: false,
+            no_shooting_played: false,
             total_cards_played: 0,
+        };
+    }
+}
+
+pub struct active_calculated_shooting {
+    pub owner: usize,
+    pub turns_remaining: usize,
+    pub when_done: fn(),
+    pub card_played: Card,
+}
+pub struct active_fiting_filter {
+    pub owner: usize,
+    pub filter_type: ShootingType,
+}
+
+pub struct ActiveCards {
+    pub landmine_played_by: isize,
+    pub active_calculated_shootings: Vec<active_calculated_shooting>,
+    pub active_firing_filters: Vec<active_fiting_filter>,
+}
+
+impl ActiveCards {
+    pub fn new() -> Self {
+        return ActiveCards {
+            landmine_played_by: -1,
+            active_calculated_shootings: Vec::new(),
+            active_firing_filters: Vec::new(),
         };
     }
 }
@@ -108,6 +120,7 @@ pub struct GameState {
     pub discard_pile: VecDeque<Card>,
     pub no_shooting_played_by: isize,
     pub turn_state: TurnState,
+    pub active_cards: ActiveCards,
 }
 
 #[derive(Debug)]
@@ -140,6 +153,7 @@ impl GameState {
             discard_pile: VecDeque::new(),
             no_shooting_played_by: -1,
             turn_state: TurnState::new(),
+            active_cards: ActiveCards::new(),
         };
     }
 
@@ -150,6 +164,16 @@ impl GameState {
 
     pub fn draw_card(&mut self) -> Option<Card> {
         return self.draw_pile.pop_front();
+    }
+
+    pub fn player_by_id(&self, player_id: usize) -> Option<&Player> {
+        self.players.iter().find(|player| player.id == player_id)
+    }
+
+    pub fn player_by_id_mut(&mut self, player_id: usize) -> Option<&mut Player> {
+        self.players
+            .iter_mut()
+            .find(|player| player.id == player_id)
     }
 
     pub fn draw_initial_hand(&mut self) {
