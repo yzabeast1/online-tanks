@@ -53,6 +53,7 @@ pub struct Card {
 #[derive(Clone, Debug, Serialize)]
 pub struct Player {
     pub name: String,
+    #[serde(skip)]
     pub id: usize,
     pub hand: Vec<Card>,
     pub health: isize,
@@ -85,7 +86,7 @@ impl Player {
 #[derive(Debug, Serialize)]
 pub struct TurnState {
     pub shooting_card_played: usize,
-    pub more_ammo_played: bool,
+    pub more_ammo_played: usize,
     pub event_card_played: bool,
     pub no_shooting_played: bool,
     pub total_cards_played: usize,
@@ -95,7 +96,7 @@ impl TurnState {
     pub fn new() -> Self {
         return TurnState {
             shooting_card_played: 0,
-            more_ammo_played: false,
+            more_ammo_played: 0,
             event_card_played: false,
             no_shooting_played: false,
             total_cards_played: 0,

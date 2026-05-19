@@ -209,7 +209,7 @@ pub fn all_cards() -> Vec<Card> {
             name: "More Ammo".to_string(),
             id: "more-ammo".to_string(),
             card_type: CardType::Event,
-            can_be_played: can_play_event,
+            can_be_played: can_play_more_ammo,
             play: stub_play,
             count: 2,
         },
@@ -399,9 +399,7 @@ fn can_play_shooting(game_state: &GameState) -> bool {
     {
         return false;
     }
-    if game_state.turn_state.shooting_card_played
-        >= game_state.turn_state.more_ammo_played as usize + 1
-    {
+    if game_state.turn_state.shooting_card_played >= game_state.turn_state.more_ammo_played + 1 {
         return false;
     }
     return true;
@@ -426,6 +424,13 @@ fn can_play_airstrike(_card: &Card, game_state: &GameState, req: &Request<Body>)
         return false;
     }
     return can_play_event(_card, game_state, req);
+}
+
+fn can_play_more_ammo(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool {
+    if game_state.turn_state.event_card_played && game_state.turn_state.more_ammo_played == 0 {
+        return false;
+    }
+    return true;
 }
 
 fn can_play_event(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool {
