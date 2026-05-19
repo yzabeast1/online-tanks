@@ -55,7 +55,7 @@ pub struct Player {
     pub name: String,
     pub id: usize,
     pub hand: Vec<Card>,
-    pub health: usize,
+    pub health: isize,
 }
 
 impl Player {
@@ -66,6 +66,19 @@ impl Player {
             hand: Vec::new(),
             health: 10,
         };
+    }
+    pub fn take_damage(&mut self, damage: isize) {
+        self.health -= damage;
+        let has_last_stand = self.hand.iter().position(|card| card.id == "last-stand");
+        if self.health < 1 {
+            if has_last_stand.is_some() {
+                self.health = 1;
+                self.hand.remove(has_last_stand.unwrap());
+            }
+            else {
+                
+            }
+        }
     }
 }
 
@@ -209,6 +222,10 @@ impl GameState {
         }
         self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
         self.draw_card(self.current_turn_player);
+        if self.active_cards.landmine_played_by != -1 && rand::thread_rng().gen_bool(0.5) {
+            self.players[self.current_turn_player].take_damage(6);
+            self.active_cards.landmine_played_by = -1;
+        }
     }
 
     pub fn draw_card(&mut self, player_index: usize) {
