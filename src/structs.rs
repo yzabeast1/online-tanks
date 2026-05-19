@@ -1,9 +1,9 @@
 use hyper::{Body, Request};
-use rand::{Rng, thread_rng};
 use rand::seq::SliceRandom;
+use rand::{Rng, thread_rng};
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use serde::Serialize;
 
 use crate::cards::all_cards;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
@@ -50,7 +50,7 @@ pub struct Card {
     pub count: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Player {
     pub name: String,
     pub id: usize,
@@ -69,7 +69,7 @@ impl Player {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct TurnState {
     pub shooting_card_played: usize,
     pub more_ammo_played: bool,
@@ -90,24 +90,25 @@ impl TurnState {
     }
 }
 
-#[derive(Debug)]
-pub struct active_calculated_shooting {
+#[derive(Debug, Serialize)]
+pub struct ActiveCalculatedShooting {
     pub owner: usize,
     pub turns_remaining: usize,
+    #[serde(skip)]
     pub when_done: fn(),
     pub card_played: Card,
 }
-#[derive(Debug)]
-pub struct active_fiting_filter {
+#[derive(Debug, Serialize)]
+pub struct ActiveFitingFilter {
     pub owner: usize,
     pub filter_type: ShootingType,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct ActiveCards {
     pub landmine_played_by: isize,
-    pub active_calculated_shootings: Vec<active_calculated_shooting>,
-    pub active_firing_filters: Vec<active_fiting_filter>,
+    pub active_calculated_shootings: Vec<ActiveCalculatedShooting>,
+    pub active_firing_filters: Vec<ActiveFitingFilter>,
 }
 
 impl ActiveCards {
@@ -120,7 +121,7 @@ impl ActiveCards {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct GameState {
     pub players: Vec<Player>,
     pub id: String,
@@ -130,11 +131,34 @@ pub struct GameState {
     pub no_shooting_played_by: isize,
     pub turn_state: TurnState,
     pub active_cards: ActiveCards,
+    pub chat_messages: Vec<ChatMessage>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ChatMessage {
+    pub sender: String,
+    pub message: String,
+    pub timestamp: usize,
+}
+
+#[derive(Debug)]
+pub struct LobbyState {
+    pub players: Vec<String>,
+    pub chat_messages: Vec<ChatMessage>,
+}
+
+impl LobbyState {
+    pub fn new(host: String) -> Self {
+        Self {
+            players: vec![host],
+            chat_messages: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct ServerState {
-    pub lobbies: Mutex<HashMap<String, Vec<String>>>,
+    pub lobbies: Mutex<HashMap<String, LobbyState>>,
     pub started_games: Mutex<HashSet<String>>,
     pub games: Mutex<HashMap<String, GameState>>,
 }
@@ -165,6 +189,7 @@ impl GameState {
             no_shooting_played_by: -1,
             turn_state: TurnState::new(),
             active_cards: ActiveCards::new(),
+            chat_messages: Vec::new(),
         };
     }
 
@@ -190,7 +215,7 @@ impl GameState {
         if self.draw_pile.is_empty() {
             self.discard_pile.shuffle(&mut thread_rng());
             self.draw_pile = std::mem::take(&mut self.discard_pile);
-            self.discard_pile=Vec::new();
+            self.discard_pile = Vec::new();
         }
         if let Some(card) = self.draw_pile.pop() {
             self.players[player_index].hand.push(card);

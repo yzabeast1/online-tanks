@@ -56,6 +56,15 @@ fn json_response(status: StatusCode, body: String) -> Response<Body> {
         .unwrap()
 }
 
+fn current_timestamp() -> usize {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_millis() as usize,
+        Err(_) => 0,
+    }
+}
+
 fn generate_joincode() -> String {
     use rand::Rng;
 
@@ -68,7 +77,7 @@ fn generate_joincode() -> String {
     code
 }
 
-fn unique_joincode(existing: &std::collections::HashMap<String, Vec<String>>) -> String {
+fn unique_joincode(existing: &std::collections::HashMap<String, LobbyState>) -> String {
     loop {
         let code = generate_joincode();
         if !existing.contains_key(&code) {
@@ -137,7 +146,7 @@ async fn handle_request(
                 Some(username) => {
                     let mut lobbies = state.lobbies.lock().unwrap();
                     let joincode = unique_joincode(&lobbies);
-                    lobbies.insert(joincode.clone(), vec![username]);
+                    lobbies.insert(joincode.clone(), LobbyState::new(username));
                     Ok(Response::builder()
                         .status(StatusCode::OK)
                         .header("content-type", "text/plain; charset=utf-8")
@@ -157,14 +166,14 @@ async fn handle_request(
                 (Some(username), Some(joincode)) => {
                     let mut lobbies = state.lobbies.lock().unwrap();
                     match lobbies.get_mut(&joincode) {
-                        Some(players) => {
-                            if players.iter().any(|player| player == &username) {
+                        Some(lobby) => {
+                            if lobby.players.iter().any(|player| player == &username) {
                                 Ok(text_response(
                                     StatusCode::OK,
                                     "no duplicate usernames allowed",
                                 ))
                             } else {
-                                players.push(username);
+                                lobby.players.push(username);
                                 Ok(text_response(StatusCode::OK, "joined game lobby"))
                             }
                         }
@@ -184,12 +193,12 @@ async fn handle_request(
                 (Some(username), Some(joincode)) => {
                     let mut lobbies = state.lobbies.lock().unwrap();
                     match lobbies.get_mut(&joincode) {
-                        Some(players) => {
+                        Some(lobby) => {
                             if let Some(index) =
-                                players.iter().position(|player| player == &username)
+                                lobby.players.iter().position(|player| player == &username)
                             {
-                                players.remove(index);
-                                if players.is_empty() {
+                                lobby.players.remove(index);
+                                if lobby.players.is_empty() {
                                     lobbies.remove(&joincode);
                                 }
                                 Ok(text_response(StatusCode::OK, "left game lobby"))
@@ -212,9 +221,9 @@ async fn handle_request(
                 Some(joincode) => {
                     let lobbies = state.lobbies.lock().unwrap();
                     match lobbies.get(&joincode) {
-                        Some(players) => Ok(json_response(
+                        Some(lobby) => Ok(json_response(
                             StatusCode::OK,
-                            serde_json::to_string(players).unwrap(),
+                            serde_json::to_string(&lobby.players).unwrap(),
                         )),
                         None => Ok(text_response(
                             StatusCode::NOT_FOUND,
@@ -231,8 +240,9 @@ async fn handle_request(
                 Some(joincode) => {
                     let mut lobbies = state.lobbies.lock().unwrap();
                     match lobbies.remove(&joincode) {
-                        Some(players) => {
-                            let mut game_state = GameState::new(joincode.clone(), players.len());
+                        Some(lobby) => {
+                            let mut game_state = GameState::new(joincode.clone(), lobby.players.len());
+                            game_state.chat_messages = lobby.chat_messages;
                             game_state.start_game();
                             state
                                 .games
@@ -261,16 +271,8 @@ async fn handle_request(
                 None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
             }
         }
-        // Keep the rest as placeholders for now.
-        (&Method::GET, "/cardInfo") | (&Method::GET, "/gameState") | (&Method::GET, "/getChat") => {
-            Ok(Response::builder()
-                .status(StatusCode::OK)
-                .header("content-type", "application/json")
-                .body(Body::from("{}"))
-                .unwrap())
-        }
         (&Method::POST, "/endTurn") => {
-            let joincode = header_value(&req, "joincode");
+            let joincode: Option<String> = header_value(&req, "joincode");
             match joincode {
                 Some(joincode) => {
                     let mut games = state.games.lock().unwrap();
@@ -289,9 +291,96 @@ async fn handle_request(
                 None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
             }
         }
+        (&Method::GET, "/gameState") => {
+            let joincode: Option<String> = header_value(&req, "joincode");
+            match joincode {
+                Some(joincode) => {
+                    let mut games = state.games.lock().unwrap();
+                    match games.get_mut(&joincode) {
+                        Some(game) => {
+                            let body = serde_json::to_string(game).unwrap();
+                            Ok(json_response(StatusCode::OK, body))
+                        }
+                        None => Ok(text_response(
+                            StatusCode::NOT_FOUND,
+                            "game not found for joincode",
+                        )),
+                    }
+                }
+                None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
+            }
+        }
+        (&Method::POST, "/sendChat") => {
+            let joincode = header_value(&req, "joincode");
+            let sender = header_value(&req, "username")
+                .unwrap_or_else(|| "Anonymous".to_string());
+            let timestamp = current_timestamp();
+            let message = header_value(&req, "text");
+
+            match (joincode, message) {
+                (Some(joincode), Some(message)) => {
+                    let chat_message = ChatMessage {
+                        sender,
+                        message,
+                        timestamp,
+                    };
+
+                    {
+                        let mut games = state.games.lock().unwrap();
+                        if let Some(game) = games.get_mut(&joincode) {
+                            game.chat_messages.push(chat_message);
+                            return Ok(text_response(StatusCode::OK, "sent"));
+                        }
+                    }
+
+                    {
+                        let mut lobbies = state.lobbies.lock().unwrap();
+                        if let Some(lobby) = lobbies.get_mut(&joincode) {
+                            lobby.chat_messages.push(chat_message);
+                            return Ok(text_response(StatusCode::OK, "sent"));
+                        }
+                    }
+
+                    Ok(text_response(
+                        StatusCode::NOT_FOUND,
+                        "lobby/game not found for joincode",
+                    ))
+                }
+                (None, _) => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
+                (_, None) => Ok(text_response(StatusCode::BAD_REQUEST, "missing text")),
+            }
+        }
+        (&Method::GET, "/getChat") => {
+            let joincode = header_value(&req, "joincode");
+            match joincode {
+                Some(joincode) => {
+                    {
+                        let games = state.games.lock().unwrap();
+                        if let Some(game) = games.get(&joincode) {
+                            let body = serde_json::to_string(&game.chat_messages).unwrap();
+                            return Ok(json_response(StatusCode::OK, body));
+                        }
+                    }
+
+                    {
+                        let lobbies = state.lobbies.lock().unwrap();
+                        if let Some(lobby) = lobbies.get(&joincode) {
+                            let body = serde_json::to_string(&lobby.chat_messages).unwrap();
+                            return Ok(json_response(StatusCode::OK, body));
+                        }
+                    }
+
+                    Ok(text_response(
+                        StatusCode::NOT_FOUND,
+                        "lobby/game not found for joincode",
+                    ))
+                }
+                None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
+            }
+        }
         (&Method::POST, "/playCard")
         | (&Method::POST, "/quitGame")
-        | (&Method::POST, "/sendChat")
+        | (&Method::GET, "/cardInfo")
         | (&Method::POST, "/activateDelayedCard")
         | (&Method::POST, "/useRadar") => Ok(Response::builder()
             .status(StatusCode::OK)
