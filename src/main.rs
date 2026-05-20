@@ -13,7 +13,6 @@ use tokio_rustls::TlsAcceptor;
 
 use crate::cards::all_cards;
 
-const JS_TANKS_SERVER_DIR: &str = "/home/yehoshua/git-repos/js-tanks/server";
 const JS_TANKS_WEBSITE_DIR: &str = "/home/yehoshua/git-repos/js-tanks/website";
 
 async fn serve_file(path: &str, content_type: &str) -> Result<Response<Body>, Infallible> {
@@ -466,20 +465,55 @@ async fn handle_request(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Load certificates from the js-tanks server folder (same as the node server)
-    let cert_path = format!("{}/certificate.crt", JS_TANKS_SERVER_DIR);
-    let key_path = format!("{}/private.key", JS_TANKS_SERVER_DIR);
-    let ca_path = format!("{}/ca_bundle.crt", JS_TANKS_SERVER_DIR);
+    // Load certificates from the directory containing the running binary
+    let exe_path = std::env::current_exe().expect("cannot determine current exe path");
+    let exe_dir = exe_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    // Determine base directory for certificates. If the binary appears to be
+    // inside a `target` directory (typical when running via `cargo run`),
+    // look two folders up (repo root). Otherwise use the binary directory.
+    let mut cert_base = exe_dir.clone();
+    if exe_dir.iter().any(|comp| comp == "target") {
+        if let Some(two_up) = exe_dir.parent().and_then(|p| p.parent()) {
+            cert_base = two_up.to_path_buf();
+            eprintln!("Running from cargo; looking for certs at {}", cert_base.display());
+        }
+    }
+
+    let cert_path = cert_base.join("certificate.crt");
+    let key_path = cert_base.join("private.key");
+    let ca_path = cert_base.join("ca_bundle.crt");
+
+    // Require cert and key to exist at the chosen location; fail otherwise.
+    if !cert_path.exists() || !key_path.exists() {
+        eprintln!("Certificate or key not found in {}.\nPlace certificate.crt and private.key in that directory.", cert_base.display());
+        return Err("certificate files not found".into());
+    }
 
     // Load leaf cert(s)
-    let mut certs = load_certs(&cert_path);
+    let mut certs = load_certs(
+        cert_path
+            .to_str()
+            .expect("certificate path is not valid UTF-8"),
+    );
     // If a CA bundle exists, append its certs to form a chain
-    if std::path::Path::new(&ca_path).exists() {
-        let mut ca_certs = load_certs(&ca_path);
+    if ca_path.exists() {
+        let mut ca_certs = load_certs(
+            ca_path
+                .to_str()
+                .expect("ca bundle path is not valid UTF-8"),
+        );
         certs.append(&mut ca_certs);
     }
 
-    let key = load_private_key(&key_path);
+    let key = load_private_key(
+        key_path
+            .to_str()
+            .expect("private key path is not valid UTF-8"),
+    );
 
     let config = ServerConfig::builder()
         .with_safe_defaults()
