@@ -522,7 +522,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .expect("bad certificates/private key");
 
     let acceptor = TlsAcceptor::from(Arc::new(config));
-    let state = Arc::new(ServerState::new());
+    
+    let state_file_path = "server_state.json";
+    let state = if std::path::Path::new(state_file_path).exists() {
+        println!("Loading state from {}", state_file_path);
+        let data = std::fs::read_to_string(state_file_path).expect("Failed to read server_state.json");
+        let server_state: ServerState = serde_json::from_str(&data).expect("Failed to parse server_state.json");
+        server_state.hydrate();
+        Arc::new(server_state)
+    } else {
+        Arc::new(ServerState::new())
+    };
+
+    let state_for_auto_save = state.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            if let Ok(json) = serde_json::to_string_pretty(&*state_for_auto_save) {
+                if let Err(e) = tokio::fs::write(state_file_path, json).await {
+                    eprintln!("Failed to auto-save state: {}", e);
+                }
+            }
+        }
+    });
+
+    let state_for_shutdown = state.clone();
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        println!("Received Ctrl-C, saving state...");
+        if let Ok(json) = serde_json::to_string_pretty(&*state_for_shutdown) {
+            if let Err(e) = std::fs::write(state_file_path, json) {
+                eprintln!("Failed to save state on shutdown: {}", e);
+            } else {
+                println!("State saved successfully.");
+            }
+        }
+        std::process::exit(0);
+    });
 
     let addr: SocketAddr = ([0, 0, 0, 0], 8443).into();
     let listener = TcpListener::bind(addr).await?;

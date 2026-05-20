@@ -1,19 +1,31 @@
 use hyper::{Body, Request};
 use rand::seq::SliceRandom;
 use rand::{Rng, thread_rng};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
+pub fn default_can_be_played() -> fn(&Card, &GameState, &Request<Body>) -> bool {
+    crate::cards::can_never_play
+}
+
+pub fn default_play() -> fn(&Card, &mut GameState, usize) {
+    crate::cards::stub_play
+}
+
+pub fn default_when_done() -> fn() {
+    crate::cards::stub_when_done
+}
+
 use crate::cards::all_cards;
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum CardType {
     Support,
     Plus,
     Shooting(ShootingType),
     Event,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum ShootingType {
     Quick,
     Calculated,
@@ -37,20 +49,20 @@ impl CardType {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Card {
     pub name: String,
     pub id: String,
     pub card_type: CardType,
-    #[serde(skip)]
+    #[serde(skip, default = "crate::structs::default_can_be_played")]
     pub can_be_played: fn(&Card, &GameState, &Request<Body>) -> bool,
-    #[serde(skip)]
+    #[serde(skip, default = "crate::structs::default_play")]
     pub play: fn(&Card, &mut GameState, usize),
     #[serde(skip)]
     pub count: usize,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Player {
     pub name: String,
     #[serde(skip)]
@@ -81,7 +93,7 @@ impl Player {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TurnState {
     pub shooting_card_played: usize,
     pub more_ammo_played: usize,
@@ -102,21 +114,21 @@ impl TurnState {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ActiveCalculatedShooting {
     pub owner: String,
     pub turns_remaining: usize,
-    #[serde(skip)]
+    #[serde(skip, default = "crate::structs::default_when_done")]
     pub when_done: fn(),
     pub card_played: Card,
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ActiveFitingFilter {
     pub owner: String,
     pub filter_type: ShootingType,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ActiveCards {
     pub landmine_played_by: isize,
     pub active_calculated_shootings: Vec<ActiveCalculatedShooting>,
@@ -133,7 +145,7 @@ impl ActiveCards {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GameState {
     pub players: Vec<Player>,
     pub id: String,
@@ -146,14 +158,14 @@ pub struct GameState {
     pub chat_messages: Vec<ChatMessage>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub sender: String,
     pub message: String,
     pub timestamp: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LobbyState {
     pub players: Vec<String>,
     pub chat_messages: Vec<ChatMessage>,
@@ -168,7 +180,7 @@ impl LobbyState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ServerState {
     pub lobbies: Mutex<HashMap<String, LobbyState>>,
     pub started_games: Mutex<HashSet<String>>,
@@ -181,6 +193,14 @@ impl ServerState {
             lobbies: Mutex::new(HashMap::new()),
             started_games: Mutex::new(HashSet::new()),
             games: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn hydrate(&self) {
+        let templates = crate::cards::all_cards();
+        let mut games = self.games.lock().unwrap();
+        for game in games.values_mut() {
+            game.hydrate(&templates);
         }
     }
 }
@@ -263,6 +283,35 @@ impl GameState {
         for i in 0..self.players.len() {
             for _ in 0..4 {
                 self.draw_card(i);
+            }
+        }
+    }
+
+    pub fn hydrate(&mut self, template_cards: &[Card]) {
+        for card in &mut self.draw_pile {
+            if let Some(template) = template_cards.iter().find(|t| t.id == card.id) {
+                card.can_be_played = template.can_be_played;
+                card.play = template.play;
+            }
+        }
+        for card in &mut self.discard_pile {
+            if let Some(template) = template_cards.iter().find(|t| t.id == card.id) {
+                card.can_be_played = template.can_be_played;
+                card.play = template.play;
+            }
+        }
+        for player in &mut self.players {
+            for card in &mut player.hand {
+                if let Some(template) = template_cards.iter().find(|t| t.id == card.id) {
+                    card.can_be_played = template.can_be_played;
+                    card.play = template.play;
+                }
+            }
+        }
+        for active in &mut self.active_cards.active_calculated_shootings {
+            if let Some(template) = template_cards.iter().find(|t| t.id == active.card_played.id) {
+                active.card_played.can_be_played = template.can_be_played;
+                active.card_played.play = template.play;
             }
         }
     }

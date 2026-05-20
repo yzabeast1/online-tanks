@@ -1,15 +1,17 @@
 use crate::structs::{Card, CardType, GameState, ShootingType};
 use hyper::{Body, Request};
 
-fn stub_play(_: &Card, _: &mut GameState, _: usize) {}
+pub fn stub_play(_: &Card, _: &mut GameState, _: usize) {}
 
-fn can_never_play(_: &Card, _: &GameState, _: &Request<Body>) -> bool {
+pub fn can_never_play(_: &Card, _: &GameState, _: &Request<Body>) -> bool {
     return false;
 }
 
-fn can_always_play(_: &Card, _: &GameState, _: &Request<Body>) -> bool {
+pub fn can_always_play(_: &Card, _: &GameState, _: &Request<Body>) -> bool {
     return true;
 }
+
+pub fn stub_when_done() {}
 
 pub fn all_cards() -> Vec<Card> {
     let card_templates = vec![
