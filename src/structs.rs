@@ -75,9 +75,7 @@ impl Player {
             if has_last_stand.is_some() {
                 self.health = 1;
                 self.hand.remove(has_last_stand.unwrap());
-            }
-            else {
-                
+            } else {
             }
         }
     }
@@ -210,6 +208,7 @@ impl GameState {
     pub fn start_game(&mut self) {
         self.current_turn_player = rand::thread_rng().gen_range(0..self.players.len());
         self.draw_pile = all_cards();
+        self.draw_pile.shuffle(&mut thread_rng());
         self.draw_initial_hand();
         self.next_turn();
     }
