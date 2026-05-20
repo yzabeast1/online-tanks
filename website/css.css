@@ -1,0 +1,204 @@
+body {
+    font-family: Arial, sans-serif;
+    /*display: flex;*/
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #f4f4f4;
+    margin: 0;
+}
+
+.chat-container {
+    width: 400px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+}
+
+.chat-box {
+    height: 90%;
+    padding: 10px;
+    overflow-y: auto;
+    border-bottom: 1px solid #ccc;
+}
+
+.chat-input {
+    display: flex;
+    padding: 10px;
+    background-color: #eee;
+}
+
+#message-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-right: 10px;
+}
+
+#send-button {
+    padding: 10px;
+    border: none;
+    background-color: #28a745;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#send-button:hover {
+    background-color: #218838;
+}
+
+.player {
+    margin-bottom: 20px;
+}
+
+.hand {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.card {
+    width: 200px;
+    height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: white;
+    background-size: cover;
+    cursor: pointer;
+}
+
+.my-hand .card {
+    background-color: lightyellow;
+}
+
+img {
+    width: 100%;
+    height: 100%;
+}
+
+/* Modal styles for zooming */
+#modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+#modal img {
+    height: 100%;
+    width: auto;
+    overflow-y:auto;
+    overflow-x: auto;
+    /* Auto width with 100% height */
+}
+
+#modal .close {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    font-size: 30px;
+    color: white;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+/* Modal popup styles */
+#popupModal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.popup-content {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    width: auto;
+    height: auto;
+    max-width: 90vw;  /* Maximum width is 90% of the viewport width */
+    max-height: 80vh; /* Maximum height is 80% of the viewport height */
+    overflow-y: auto; /* Adds scrolling if the content is too large */
+    overflow-x:auto;
+    position: relative;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    position: absolute;
+    right: 20px;
+    top: 10px;
+}
+
+#popupContent {
+    margin-top: 20px;
+}
+
+/* Play button */
+#playCardBtn {
+    margin-top: 20px;
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+/* Overall container taking up the full screen */
+.container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+
+/* Left pane (Game screen) */
+.pane {
+    height: 100%;
+    overflow: auto; /* Allows content to scroll if necessary */
+}
+
+/* Set default width to 75% for the left pane */
+.left-pane {
+    width: 75%; /* Default to 75% of the container width */
+    background-color: #f0f0f0;
+    padding: 10px;
+}
+
+/* Set default width to 25% for the right pane */
+.right-pane {
+    width: 25%; /* Default to 25% of the container width */
+    background-color: #e0e0e0;
+    padding: 10px;
+}
+
+/* Draggable vertical bar */
+.drag-bar {
+    width: 10px; /* Make it visible enough */
+    background-color: #333; /* Dark color for visibility */
+    cursor: col-resize; /* Shows horizontal drag icon */
+    position: relative;
+    z-index: 1; /* Ensure it's on top of the panes */
+}

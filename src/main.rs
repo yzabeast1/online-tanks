@@ -13,7 +13,7 @@ use tokio_rustls::TlsAcceptor;
 
 use crate::cards::all_cards;
 
-const JS_TANKS_WEBSITE_DIR: &str = "/home/yehoshua/git-repos/js-tanks/website";
+const WEBSITE_DIR: &str = "./website";
 
 async fn serve_file(path: &str, content_type: &str) -> Result<Response<Body>, Infallible> {
     match tokio::fs::read(path).await {
@@ -123,11 +123,11 @@ async fn handle_request(
     let path = req.uri().path().to_string();
     match (req.method(), path.as_str()) {
         (&Method::GET, "/") | (&Method::GET, "/index.html") => {
-            let p = format!("{}/index.html", JS_TANKS_WEBSITE_DIR);
+            let p = format!("{}/index.html", WEBSITE_DIR);
             serve_file(&p, "text/html; charset=utf-8").await
         }
         (&Method::GET, "/css.css") => {
-            let p = format!("{}/css.css", JS_TANKS_WEBSITE_DIR);
+            let p = format!("{}/css.css", WEBSITE_DIR);
             serve_file(&p, "text/css; charset=utf-8").await
         }
         (&Method::GET, "/gameScreen.js")
@@ -135,7 +135,7 @@ async fn handle_request(
         | (&Method::GET, "/networkFunctions.js")
         | (&Method::GET, "/playCard.js")
         | (&Method::GET, "/chat.js") => {
-            let p = format!("{}/{}", JS_TANKS_WEBSITE_DIR, &path[1..]);
+            let p = format!("{}/{}", WEBSITE_DIR, &path[1..]);
             serve_file(&p, "application/javascript").await
         }
         (&Method::GET, "/checkOnline") => Ok(text_response(StatusCode::OK, "Online")),

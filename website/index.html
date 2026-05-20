@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TANKS</title>
+    <link rel="stylesheet" href="css.css">
+</head>
+
+<body>
+    <div class="menu-screen">
+        <div class="login-container">
+            <input type="text" id="username-input" placeholder="Enter username" />
+            <br />
+            <input type="text" id="joincode-input" placeholder="Enter join code" />
+            <br />
+        </div>
+        <button id="new-game">Create New Game</button>
+        <br />
+        <button id="join-lobby">Join Lobby</button>
+        <br />
+        <button id="spectate">Spectate Game</button>
+    </div>
+    <div class="container" style="display: none;">
+        <div id="leftPane" class="pane left-pane">
+            <div class="lobby-screen" style="display:none">
+                <h2 id="lobby-show-code">JoinCode: </h2>
+                <div class="lobby-players" id="lobby-players">
+
+                </div>
+                <button id="start-game" class="start-game">Start Game</button>
+                <button id="leave-lobby">Leave Lobby</button>
+                <br>
+                <input type="checkbox" id="show-deck-checkbox" name="show-deck-checkbox" value="show-deck-checkbox">
+                <label for="show-deck-checkbox">Show Deck</label>
+                <div class="show-deck" id="show-deck" style="display:none"></div>
+            </div>
+            <div class="game-screen" style="display:none;">
+                <h1 class="turn" id="turn"></h1>
+                <h1 class="dead" id="dead" style="display: none;">You Died</h1>
+                <h1 class="win" id="win" style="display: none;">You Win</h1>
+                <h3 class="no-shooting" id="no-shooting" style="display: none;">No Shooting is not in play</h3>
+                <h3 class="landmine" id="landmine" style="display: none;">Landmine is in play</h3>
+                <br>
+                <button id="spectate-when-dead" style="display: none;">Spectate Game</button>
+                <button class="end-turn" id="end-turn" style="display: none;">End Turn</button>
+                <br>
+                <div id="game"></div>
+
+                <!-- Modal for zooming in on card -->
+                <div id="modal">
+                    <button class="close" onclick="closeModal()">X</button>
+                    <img id="modalImage" src="" alt="Zoomed Card">
+                    <button class="play-card" id="play-card" onclick="playCard()">PlayCard</button>
+                </div>
+                <div id="popupModal">
+                    <div class="popup-content">
+                        <button class="close-btn" onclick="closePopup()">X</button>
+                        <div id="popupContent"></div>
+
+                        <!-- Play Card Button -->
+                        <button id="playCardBtn" onclick="sendPlayedCardToServer()">Play Card</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="dragBar" class="drag-bar"></div>
+        <div id="rightPane" class="pane right-pane">
+            <div class="chat-box" id="chat-box">
+                <!-- Messages will appear here -->
+            </div>
+            <div class="chat-input">
+                <input type="text" id="message-input" placeholder="Type your message..." autofocus>
+                <button id="send-button">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="chat.js"></script>
+    <script src="lobby.js"></script>
+    <script src="networkFunctions.js"></script>
+    <script src="gameScreen.js"></script>
+    <script src="playCard.js"></script>
+</body>
+
+</html>
