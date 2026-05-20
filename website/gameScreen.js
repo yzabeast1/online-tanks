@@ -36,7 +36,10 @@ async function fetchGameState() {
 // Render the game
 function renderGame() {
     if (JSON.stringify(renderedData) != JSON.stringify(gameData)) {
-        if (!gameData['players'][username] && !spectating) {
+        const myPlayerIndex = gameData.players.findIndex(p => p.name === username);
+        const isDead = myPlayerIndex === -1;
+
+        if (isDead && !spectating) {
             document.getElementById('dead').style.display = 'block'
             document.getElementById('spectate-when-dead').style.display = 'block'
             document.getElementById('turn').style.display = 'none'
@@ -45,9 +48,9 @@ function renderGame() {
             const gameDiv = document.getElementById('game');
             gameDiv.innerHTML = '';  // Clear the game div
         } else {
-            if (gameData.order.length == 1) {
+            if (gameData.players.length == 1) {
                 document.getElementById('win').style.display = "block"
-                document.getElementById('win').innerHTML = gameData['order'][0] + " Wins"
+                document.getElementById('win').innerHTML = gameData.players[0].name + " Wins"
                 document.getElementById('turn').style.display = 'none'
                 document.getElementById('end-turn').style.display = 'none'
                 document.getElementById('no-shooting').style.display = 'none'
@@ -56,8 +59,8 @@ function renderGame() {
                 gameDiv.innerHTML = '';  // Clear the game div
             }
             else {
-                document.getElementById('turn').innerHTML = gameData['order'][gameData['turn']] + "'s Turn"
-                if (gameData['order'][gameData['turn']] == username) {
+                document.getElementById('turn').innerHTML = gameData.players[gameData.current_turn_player].name + "'s Turn"
+                if (gameData.players[gameData.current_turn_player].name == username) {
                     document.getElementById('end-turn').style.display = 'block'
                     document.getElementById('play-card').style.display = 'block'
                 }
@@ -65,12 +68,12 @@ function renderGame() {
                     document.getElementById('end-turn').style.display = 'none'
                     document.getElementById('play-card').style.display = 'none'
                 }
-                if (!gameData['shooting_allowed']) {
+                if (gameData.no_shooting_played_by !== -1) {
                     document.getElementById('no-shooting').style.display = 'block'
-                    document.getElementById('no-shooting').innerHTML = "No shooting was played by " + gameData['no_shooting_player']
+                    document.getElementById('no-shooting').innerHTML = "No shooting was played by " + gameData.players[gameData.no_shooting_played_by].name
                 }
                 else document.getElementById('no-shooting').style.display = 'none'
-                if (gameData['landmine_in_play']) {
+                if (gameData.active_cards.landmine_played_by !== -1) {
                     document.getElementById('landmine').style.display = 'block'
                 }
                 else document.getElementById('landmine').style.display = 'none'
@@ -78,32 +81,38 @@ function renderGame() {
                 gameDiv.innerHTML = '';  // Clear the game div
 
                 // Move the current player's data to the top of the player list for rendering
-                var orderedPlayers
-                if (!spectating) orderedPlayers = Object.assign({}, { [username]: gameData.players[username] }, gameData.players);
-                else orderedPlayers = gameData.players
+                var orderedPlayers = [];
+                if (!spectating && !isDead) {
+                    orderedPlayers.push(gameData.players[myPlayerIndex]);
+                    orderedPlayers.push(...gameData.players.filter((p, i) => i !== myPlayerIndex));
+                } else {
+                    orderedPlayers = gameData.players;
+                }
 
                 // Render players' hands
-                for (const player in orderedPlayers) {
-                    const playerData = orderedPlayers[player];
+                for (let j = 0; j < orderedPlayers.length; j++) {
+                    const playerData = orderedPlayers[j];
                     const playerDiv = document.createElement('div');
                     playerDiv.classList.add('player');
 
                     const healthText = document.createElement('p');
-                    healthText.innerText = `${player}'s Health: ${playerData.health}`;
+                    healthText.innerText = `${playerData.name}'s Health: ${playerData.health}`;
                     playerDiv.appendChild(healthText);
 
-                    if (playerData['queued_cards'].length > 0) {
+                    let playerQueuedCards = gameData.active_cards.active_calculated_shootings.filter(s => s.owner === playerData.name);
+                    if (playerQueuedCards.length > 0) {
                         const queuedCards = document.createElement('div')
                         queuedCards.classList.add('queuedCards')
-                        for (var i = 0; i < playerData['queued_cards'].length; i++) {
+                        for (var i = 0; i < playerQueuedCards.length; i++) {
+                            const queuedCardData = playerQueuedCards[i];
                             var cardDisplay = document.createElement('p')
-                            cardDisplay.innerText = `${playerData['queued_cards'][i]['name']} has a countdown of ${playerData['queued_cards'][i]['countdown']}`
+                            cardDisplay.innerText = `${queuedCardData.card_played.name} has a countdown of ${queuedCardData.turns_remaining}`
                             queuedCards.appendChild(cardDisplay)
-                            if (playerData['queued_cards'][i]['countdown'] == 0&&player==username&&gameData['order'][gameData['turn']]==username) {
+                            if (queuedCardData.turns_remaining == 0 && playerData.name == username && gameData.players[gameData.current_turn_player].name == username) {
                                 var activateButton = document.createElement('button')
                                 activateButton.classList.add('activateButton')
                                 activateButton.innerHTML = 'Activate'
-                                activateButton.id=playerData['queued_cards'][i]['cardid']
+                                activateButton.id = queuedCardData.card_played.id
                                 activateButton.addEventListener('click', (event) => { activateCalculatedShootingPopup(event.target.id) })
                                 queuedCards.appendChild(activateButton)
                             }
@@ -114,14 +123,14 @@ function renderGame() {
                     const handDiv = document.createElement('div');
                     handDiv.classList.add('hand');
 
-                    playerData.hand.forEach(cardIndex => {
+                    playerData.hand.forEach(card => {
                         const cardDiv = document.createElement('div');
                         cardDiv.classList.add('card');
 
                         const img = document.createElement('img');
-                        if (player === username) {
-                            img.src = `https://raw.githubusercontent.com/yzabeast1/tanks/refs/heads/master/server/${deck[cardIndex]['image-location']}`;  // Use card ID to get the front image
-                            img.alt = deck[cardIndex].name;
+                        if (playerData.name === username) {
+                            img.src = `https://raw.githubusercontent.com/yzabeast1/tanks/refs/heads/master/server/cards/${card.id}.png`;  // Use card ID to get the front image
+                            img.alt = card.name;
                             cardDiv.classList.add('my-hand');
                         } else {
                             img.src = `https://raw.githubusercontent.com/yzabeast1/tanks/refs/heads/master/server/cards/back.png`;  // Use the back image for others
@@ -131,7 +140,7 @@ function renderGame() {
                         cardDiv.appendChild(img);
 
                         // Add click event to zoom in on card
-                        cardDiv.addEventListener('click', () => openModal(img.src, deck[cardIndex]));
+                        cardDiv.addEventListener('click', () => openModal(img.src, card));
 
                         handDiv.appendChild(cardDiv);
                     });
@@ -153,16 +162,25 @@ function openModal(imageSrc, card) {
     const modalImage = document.getElementById('modalImage');
     modalImage.src = imageSrc;
     modal.style.display = 'flex';
-    if (card['type'] == 'shooting' && ((!renderedData['shooting_allowed'] && renderedData['no_shooting_player'] != username) || renderedData['shooting_count'] <= 0)) {
-        document.getElementById('play-card').style.display = 'none'
+
+    let isShooting = typeof card.card_type === 'object' && card.card_type !== null && card.card_type.hasOwnProperty('Shooting');
+    let isEvent = card.card_type === 'Event';
+    
+    let maxShooting = 1 + renderedData.turn_state.more_ammo_played;
+    let shootingAllowed = renderedData.no_shooting_played_by === -1 || renderedData.players[renderedData.no_shooting_played_by].name === username;
+
+    if (isShooting && (!shootingAllowed || renderedData.turn_state.shooting_card_played >= maxShooting)) {
+        document.getElementById('play-card').style.display = 'none';
     }
-    else if (card['type'] == 'event' && renderedData['event_count'] <= 0) {
-        document.getElementById('play-card').style.display = 'none'
+    else if (isEvent && renderedData.turn_state.event_card_played) {
+        document.getElementById('play-card').style.display = 'none';
     }
-    else if (card['only_card'] && renderedData['card_played_this_turn']) {
-        document.getElementById('play-card').style.display = 'none'
+    else if (['nuke', 'lottery'].includes(card.id) && renderedData.turn_state.total_cards_played > 0) {
+        document.getElementById('play-card').style.display = 'none';
     }
-    else document.getElementById('play-card').style.display = 'block'
+    else {
+        document.getElementById('play-card').style.display = 'block';
+    }
 }
 
 // Close modal

@@ -104,7 +104,7 @@ impl TurnState {
 
 #[derive(Debug, Serialize)]
 pub struct ActiveCalculatedShooting {
-    pub owner: usize,
+    pub owner: String,
     pub turns_remaining: usize,
     #[serde(skip)]
     pub when_done: fn(),
@@ -112,7 +112,7 @@ pub struct ActiveCalculatedShooting {
 }
 #[derive(Debug, Serialize)]
 pub struct ActiveFitingFilter {
-    pub owner: usize,
+    pub owner: String,
     pub filter_type: ShootingType,
 }
 
@@ -186,10 +186,10 @@ impl ServerState {
 }
 
 impl GameState {
-    pub fn new(game_id: String, num_players: usize) -> Self {
+    pub fn new(game_id: String, player_names: Vec<String>) -> Self {
         let mut players = Vec::new();
-        for i in 0..num_players {
-            players.push(Player::new(format!("Player {}", i + 1), i));
+        for (i, name) in player_names.into_iter().enumerate() {
+            players.push(Player::new(name, i));
         }
 
         return GameState {
@@ -216,7 +216,7 @@ impl GameState {
     pub fn next_turn(&mut self) {
         self.turn_state = TurnState::new();
         for calculated_shooting in self.active_cards.active_calculated_shootings.iter_mut() {
-            if calculated_shooting.owner == self.players[self.current_turn_player].id {
+            if calculated_shooting.owner == self.players[self.current_turn_player].name {
                 calculated_shooting.turns_remaining -= 1;
             }
         }
@@ -247,6 +247,16 @@ impl GameState {
         self.players
             .iter_mut()
             .find(|player| player.id == player_id)
+    }
+
+    pub fn player_by_name(&self, name: &str) -> Option<&Player> {
+        self.players.iter().find(|player| player.name == name)
+    }
+
+    pub fn player_by_name_mut(&mut self, name: &str) -> Option<&mut Player> {
+        self.players
+            .iter_mut()
+            .find(|player| player.name == name)
     }
 
     pub fn draw_initial_hand(&mut self) {

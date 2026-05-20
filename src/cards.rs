@@ -290,9 +290,9 @@ fn can_play_firing_filter(_: &Card, game_state: &GameState, req: &Request<Body>)
     };
 
     // Check if the current player already has an active firing filter of this type
-    let current_player_id = game_state.current_turn_player;
+    let current_player_name = &game_state.players[game_state.current_turn_player].name;
     for active_filter in &game_state.active_cards.active_firing_filters {
-        if active_filter.owner == current_player_id && active_filter.filter_type == filter_type {
+        if active_filter.owner == *current_player_name && active_filter.filter_type == filter_type {
             return false;
         }
     }
@@ -341,14 +341,13 @@ fn can_play_distractor_missile(_card: &Card, game_state: &GameState, _req: &Requ
 
 fn can_play_quick_shooting(_: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
     let headers = req.headers();
-    let target_player_id = headers
+    let target_player_name = headers
         .get("target")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<usize>().ok());
+        .and_then(|value| value.to_str().ok());
 
-    if let Some(target_id) = target_player_id {
+    if let Some(target_name) = target_player_name {
         for active_filter in &game_state.active_cards.active_firing_filters {
-            if active_filter.owner == target_id && active_filter.filter_type == ShootingType::Quick
+            if active_filter.owner == target_name && active_filter.filter_type == ShootingType::Quick
             {
                 return false;
             }
@@ -359,14 +358,13 @@ fn can_play_quick_shooting(_: &Card, game_state: &GameState, req: &Request<Body>
 
 fn can_play_calculated_shooting(_: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
     let headers = req.headers();
-    let target_player_id = headers
+    let target_player_name = headers
         .get("target")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<usize>().ok());
+        .and_then(|value| value.to_str().ok());
 
-    if let Some(target_id) = target_player_id {
+    if let Some(target_name) = target_player_name {
         for active_filter in &game_state.active_cards.active_firing_filters {
-            if active_filter.owner == target_id
+            if active_filter.owner == target_name
                 && active_filter.filter_type == ShootingType::Calculated
             {
                 return false;
@@ -378,14 +376,13 @@ fn can_play_calculated_shooting(_: &Card, game_state: &GameState, req: &Request<
 
 fn can_play_boom_shooting(_: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
     let headers = req.headers();
-    let target_player_id = headers
+    let target_player_name = headers
         .get("target")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<usize>().ok());
+        .and_then(|value| value.to_str().ok());
 
-    if let Some(target_id) = target_player_id {
+    if let Some(target_name) = target_player_name {
         for active_filter in &game_state.active_cards.active_firing_filters {
-            if active_filter.owner == target_id && active_filter.filter_type == ShootingType::Boom {
+            if active_filter.owner == target_name && active_filter.filter_type == ShootingType::Boom {
                 return false;
             }
         }
@@ -407,16 +404,15 @@ fn can_play_shooting(game_state: &GameState) -> bool {
 
 fn can_play_airstrike(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
     let headers = req.headers();
-    let target_player_id = headers
+    let target_player_name = headers
         .get("target")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<usize>().ok());
+        .and_then(|value| value.to_str().ok());
 
-    let Some(target_player_id) = target_player_id else {
+    let Some(target_player_name) = target_player_name else {
         return false;
     };
 
-    let Some(target_player) = game_state.player_by_id(target_player_id) else {
+    let Some(target_player) = game_state.player_by_name(target_player_name) else {
         return false;
     };
 
@@ -483,16 +479,15 @@ fn can_play_helpful_hand(_card: &Card, game_state: &GameState, _req: &Request<Bo
 
 fn can_play_steal(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
     let headers = req.headers();
-    let target_player_id = headers
+    let target_player_name = headers
         .get("target")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<usize>().ok());
+        .and_then(|value| value.to_str().ok());
 
-    let Some(target_player_id) = target_player_id else {
+    let Some(target_player_name) = target_player_name else {
         return false;
     };
 
-    let Some(target_player) = game_state.player_by_id(target_player_id) else {
+    let Some(target_player) = game_state.player_by_name(target_player_name) else {
         return false;
     };
 

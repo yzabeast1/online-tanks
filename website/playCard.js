@@ -7,7 +7,16 @@ function playCard() {
     card = card[0]
     cardSelected = card
     document.getElementById('playCardBtn').onclick = sendPlayedCardToServer
-    triggerActions(deck.find(item => item.id === card).headers)
+    
+    let deckCard = deck.find(item => item.id === card);
+    let actions = [];
+    if (deckCard) {
+        let isShooting = typeof deckCard.card_type === 'object' && deckCard.card_type !== null && deckCard.card_type.hasOwnProperty('Shooting');
+        if (isShooting || deckCard.id === 'airstrike' || deckCard.id === 'steal') {
+            actions.push('target');
+        }
+    }
+    triggerActions(actions);
 }
 function triggerActions(actions) {
     const popupContent = document.getElementById('popupContent');
@@ -35,12 +44,16 @@ function createQueuedCardDropdown(username) {
     dropdown.id = `queuedCardDropdown`;
     dropdown.innerHTML = '';  // Clear any existing options
 
-    gameData.players[username]['queued_cards'].forEach(card => {
-        const option = document.createElement('option');
-        option.value = card.cardid;
-        option.text = `${card.name} with countdown ${card.countdown}`;
-        dropdown.appendChild(option);
-    });
+    const myPlayer = gameData.players.find(p => p.name === username);
+    if (myPlayer) {
+        const queuedCards = gameData.active_cards.active_calculated_shootings.filter(s => s.owner === myPlayer.name);
+        queuedCards.forEach(s => {
+            const option = document.createElement('option');
+            option.value = s.card_played.id;
+            option.text = `${s.card_played.name} with countdown ${s.turns_remaining}`;
+            dropdown.appendChild(option);
+        });
+    }
 
     popupContent.appendChild(dropdown);
     popupContent.appendChild(document.createElement('br'))
@@ -56,14 +69,15 @@ function createPlayerSelectPopup() {
     dropdown.id = 'playerDropdown';
     dropdown.innerHTML = '';  // Clear any existing options
 
-    for (const player in gameData.players) {
-        if (player !== username) {  // Exclude current player's name
+    gameData.players.forEach(player => {
+        if (player.name !== username) {  // Exclude current player's name
             const option = document.createElement('option');
-            option.value = player;
-            option.text = player;
+            option.value = player.name;
+            option.text = player.name;
             dropdown.appendChild(option);
         }
-    }
+    });
+
     popupContent.appendChild(dropdown);
     popupContent.appendChild(document.createElement('br'))
 }
@@ -77,15 +91,17 @@ function createDiscardDropdown(discardAction) {
     dropdown.id = `discardDropdown_${discardAction}`;
     dropdown.innerHTML = '';  // Clear any existing options
 
-    gameData.players[username].hand.forEach(cardIndex => {
-        const card = deck[cardIndex]
-        if (card && card.id != cardSelected) {
-            const option = document.createElement('option');
-            option.value = cardIndex;
-            option.text = card.name;
-            dropdown.appendChild(option);
-        }
-    });
+    const myPlayer = gameData.players.find(p => p.name === username);
+    if (myPlayer) {
+        myPlayer.hand.forEach((card, index) => {
+            if (card && card.id != cardSelected) {
+                const option = document.createElement('option');
+                option.value = index;
+                option.text = card.name;
+                dropdown.appendChild(option);
+            }
+        });
+    }
 
     popupContent.appendChild(dropdown);
     popupContent.appendChild(document.createElement('br'))
@@ -132,7 +148,7 @@ function sendPlayedCardToServer() {
 }
 function findCardInPlayerHand(cardId, username) {
     // Get the player's hand
-    const player = gameData.players[username];
+    const player = gameData.players.find(p => p.name === username);
     if (!player) {
         console.error(`Player with username '${username}' not found.`);
         return null;
@@ -142,13 +158,11 @@ function findCardInPlayerHand(cardId, username) {
     console.log(playerHand)
     // Loop through the player's hand and check if any card matches the given cardId
     for (let i = 0; i < playerHand.length; i++) {
-        const cardIndex = playerHand[i];  // This is the index into the deck
-        const card = deck[cardIndex];
+        const card = playerHand[i];
         console.log(card)
         if (card && card.id === cardId) {
             console.log(`Card with ID ${cardId} found in ${username}'s hand at hand index ${i}.`);
-            //return deck.indexOf(card);
-            return playerHand[i]
+            return i;
         }
     }
 

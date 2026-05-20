@@ -241,7 +241,7 @@ async fn handle_request(
                     match lobbies.remove(&joincode) {
                         Some(lobby) => {
                             let mut game_state =
-                                GameState::new(joincode.clone(), lobby.players.len());
+                                GameState::new(joincode.clone(), lobby.players.clone());
                             game_state.chat_messages = lobby.chat_messages;
                             game_state.start_game();
                             state
@@ -396,10 +396,10 @@ async fn handle_request(
                                 let was_their_turn = game.current_turn_player == player_index;
                                 
                                 // 1. Remove their active firing filters
-                                game.active_cards.active_firing_filters.retain(|f| f.owner != quitting_player_id);
+                                game.active_cards.active_firing_filters.retain(|f| f.owner != *username);
                                 
                                 // 2. Remove their calculated shootings
-                                game.active_cards.active_calculated_shootings.retain(|s| s.owner != quitting_player_id);
+                                game.active_cards.active_calculated_shootings.retain(|s| s.owner != *username);
                                 
                                 // 3. If they played no shooting, transfer to next player
                                 if game.no_shooting_played_by == player_index as isize {
