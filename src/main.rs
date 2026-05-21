@@ -451,10 +451,7 @@ async fn handle_request(
                         Some(game) => {
                             // Find the quitting player
                             if let Some(player_index) = game.players.iter().position(|p| p.name == username) {
-                                game.remove_player(player_index, true);
-
-                                // If no players left, delete the game
-                                if game.players.is_empty() {
+                                if game.remove_player(player_index, true) {
                                     games.remove(&joincode);
                                 }
                                 

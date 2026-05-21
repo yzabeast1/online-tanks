@@ -261,9 +261,9 @@ impl GameState {
         }
     }
 
-    pub fn remove_player(&mut self, player_index: usize, advance_turn_if_current: bool) {
+    pub fn remove_player(&mut self, player_index: usize, advance_turn_if_current: bool) -> bool {
         if player_index >= self.players.len() {
-            return;
+            return self.players.is_empty();
         }
 
         let player_name = self.players[player_index].name.clone();
@@ -291,7 +291,7 @@ impl GameState {
         if self.players.is_empty() {
             self.current_turn_player = 0;
             self.no_shooting_played_by = -1;
-            return;
+            return true;
         }
 
         if self.no_shooting_played_by > player_index as isize {
@@ -311,6 +311,8 @@ impl GameState {
             };
             self.next_turn();
         }
+
+        false
     }
 
     pub fn draw_card(&mut self, player_index: usize) {
