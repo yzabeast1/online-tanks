@@ -80,17 +80,6 @@ impl Player {
             health: 10,
         };
     }
-    pub fn take_damage(&mut self, damage: isize) {
-        self.health -= damage;
-        let has_last_stand = self.hand.iter().position(|card| card.id == "last-stand");
-        if self.health < 1 {
-            if has_last_stand.is_some() {
-                self.health = 1;
-                self.hand.remove(has_last_stand.unwrap());
-            } else {
-            }
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -234,6 +223,9 @@ impl GameState {
     }
 
     pub fn next_turn(&mut self) {
+        if self.players.is_empty() {
+            return;
+        }
         self.turn_state = TurnState::new();
         for calculated_shooting in self.active_cards.active_calculated_shootings.iter_mut() {
             if calculated_shooting.owner == self.players[self.current_turn_player].name {
@@ -243,8 +235,81 @@ impl GameState {
         self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
         self.draw_card(self.current_turn_player);
         if self.active_cards.landmine_played_by != -1 && rand::thread_rng().gen_bool(0.5) {
-            self.players[self.current_turn_player].take_damage(6);
             self.active_cards.landmine_played_by = -1;
+            self.damage_player(self.current_turn_player, 6);
+        }
+    }
+
+    pub fn damage_player(&mut self, player_index: usize, damage: isize) {
+        if player_index >= self.players.len() {
+            return;
+        }
+
+        self.players[player_index].health -= damage;
+        let has_last_stand = self.players[player_index]
+            .hand
+            .iter()
+            .position(|card| card.id == "last-stand");
+
+        if self.players[player_index].health < 1 {
+            if let Some(last_stand_index) = has_last_stand {
+                self.players[player_index].health = 1;
+                self.players[player_index].hand.remove(last_stand_index);
+            } else {
+                self.remove_player(player_index, true);
+            }
+        }
+    }
+
+    pub fn remove_player(&mut self, player_index: usize, advance_turn_if_current: bool) {
+        if player_index >= self.players.len() {
+            return;
+        }
+
+        let player_name = self.players[player_index].name.clone();
+        let was_their_turn = self.current_turn_player == player_index;
+
+        self.active_cards
+            .active_firing_filters
+            .retain(|filter| filter.owner != player_name);
+        self.active_cards
+            .active_calculated_shootings
+            .retain(|shooting| shooting.owner != player_name);
+
+        if self.no_shooting_played_by == player_index as isize {
+            self.no_shooting_played_by = if self.players.len() > 1 {
+                ((player_index + 1) % self.players.len()) as isize
+            } else {
+                -1
+            };
+        }
+
+        let hand = std::mem::take(&mut self.players[player_index].hand);
+        self.discard_pile.extend(hand);
+        self.players.remove(player_index);
+
+        if self.players.is_empty() {
+            self.current_turn_player = 0;
+            self.no_shooting_played_by = -1;
+            return;
+        }
+
+        if self.no_shooting_played_by > player_index as isize {
+            self.no_shooting_played_by -= 1;
+        }
+        if self.current_turn_player > player_index {
+            self.current_turn_player -= 1;
+        } else if self.current_turn_player >= self.players.len() {
+            self.current_turn_player = 0;
+        }
+
+        if was_their_turn && advance_turn_if_current {
+            self.current_turn_player = if self.current_turn_player == 0 {
+                self.players.len() - 1
+            } else {
+                self.current_turn_player - 1
+            };
+            self.next_turn();
         }
     }
 
@@ -274,9 +339,7 @@ impl GameState {
     }
 
     pub fn player_by_name_mut(&mut self, name: &str) -> Option<&mut Player> {
-        self.players
-            .iter_mut()
-            .find(|player| player.name == name)
+        self.players.iter_mut().find(|player| player.name == name)
     }
 
     pub fn draw_initial_hand(&mut self) {
@@ -309,7 +372,10 @@ impl GameState {
             }
         }
         for active in &mut self.active_cards.active_calculated_shootings {
-            if let Some(template) = template_cards.iter().find(|t| t.id == active.card_played.id) {
+            if let Some(template) = template_cards
+                .iter()
+                .find(|t| t.id == active.card_played.id)
+            {
                 active.card_played.can_be_played = template.can_be_played;
                 active.card_played.play = template.play;
             }

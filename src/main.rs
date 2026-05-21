@@ -451,44 +451,9 @@ async fn handle_request(
                         Some(game) => {
                             // Find the quitting player
                             if let Some(player_index) = game.players.iter().position(|p| p.name == username) {
-                                let quitting_player_id = game.players[player_index].id;
-                                let was_their_turn = game.current_turn_player == player_index;
-                                
-                                // 1. Remove their active firing filters
-                                game.active_cards.active_firing_filters.retain(|f| f.owner != *username);
-                                
-                                // 2. Remove their calculated shootings
-                                game.active_cards.active_calculated_shootings.retain(|s| s.owner != *username);
-                                
-                                // 3. If they played no shooting, transfer to next player
-                                if game.no_shooting_played_by == player_index as isize {
-                                    let next_player_index = (player_index + 1) % game.players.len();
-                                    game.no_shooting_played_by = next_player_index as isize;
-                                }
-                                
-                                // 4. Move their hand to the discard pile
-                                let hand = std::mem::take(&mut game.players[player_index].hand);
-                                game.discard_pile.extend(hand);
-                                
-                                // 5. Remove the player from the game
-                                game.players.remove(player_index);
-                                
-                                // 6. Adjust indices after removal
-                                if game.no_shooting_played_by as usize > player_index {
-                                    game.no_shooting_played_by -= 1;
-                                }
-                                if game.current_turn_player > player_index {
-                                    game.current_turn_player -= 1;
-                                } else if game.current_turn_player == player_index && !game.players.is_empty() {
-                                    game.current_turn_player = game.current_turn_player % game.players.len();
-                                }
-                                
-                                // 7. If it was their turn, advance to the next player's turn
-                                if was_their_turn && !game.players.is_empty() {
-                                    game.next_turn();
-                                }
-                                
-                                // 8. If no players left, delete the game
+                                game.remove_player(player_index, true);
+
+                                // If no players left, delete the game
                                 if game.players.is_empty() {
                                     games.remove(&joincode);
                                 }
