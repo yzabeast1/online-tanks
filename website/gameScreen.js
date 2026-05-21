@@ -123,12 +123,19 @@ function renderGame() {
                     const handDiv = document.createElement('div');
                     handDiv.classList.add('hand');
 
-                    playerData.hand.forEach(card => {
+                    const visibleCards = playerData.name === username ? playerData.hand : [];
+                    const hiddenCardCount = playerData.name === username ? 0 : (playerData.hand_count || 0);
+                    const cardsToRender = [
+                        ...visibleCards.map(card => ({ card, hidden: false })),
+                        ...Array.from({ length: hiddenCardCount }, () => ({ card: null, hidden: true }))
+                    ];
+
+                    cardsToRender.forEach(({ card, hidden }) => {
                         const cardDiv = document.createElement('div');
                         cardDiv.classList.add('card');
 
                         const img = document.createElement('img');
-                        if (playerData.name === username) {
+                        if (!hidden) {
                             img.src = `https://raw.githubusercontent.com/yzabeast1/tanks/refs/heads/master/server/cards/${card.id}.png`;  // Use card ID to get the front image
                             img.alt = card.name;
                             cardDiv.classList.add('my-hand');
@@ -139,8 +146,10 @@ function renderGame() {
 
                         cardDiv.appendChild(img);
 
-                        // Add click event to zoom in on card
-                        cardDiv.addEventListener('click', () => openModal(img.src, card));
+                        if (!hidden) {
+                            // Add click event to zoom in on card
+                            cardDiv.addEventListener('click', () => openModal(img.src, card));
+                        }
 
                         handDiv.appendChild(cardDiv);
                     });

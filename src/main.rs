@@ -8,6 +8,7 @@ use hyper::service::service_fn;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
+use serde::Serialize;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 
@@ -82,6 +83,59 @@ fn unique_joincode(existing: &std::collections::HashMap<String, LobbyState>) -> 
         if !existing.contains_key(&code) {
             return code;
         }
+    }
+}
+
+#[derive(Serialize)]
+struct GameStateResponse<'a> {
+    players: Vec<PlayerResponse<'a>>,
+    id: &'a str,
+    current_turn_player: usize,
+    draw_pile: &'a [Card],
+    discard_pile: &'a [Card],
+    no_shooting_played_by: isize,
+    turn_state: &'a TurnState,
+    active_cards: &'a ActiveCards,
+    chat_messages: &'a [ChatMessage],
+}
+
+#[derive(Serialize)]
+struct PlayerResponse<'a> {
+    name: &'a str,
+    hand: &'a [Card],
+    hand_count: usize,
+    health: isize,
+}
+
+fn game_state_response_for_player<'a>(
+    game: &'a GameState,
+    username: Option<&str>,
+) -> GameStateResponse<'a> {
+    let players = game
+        .players
+        .iter()
+        .map(|player| PlayerResponse {
+            name: &player.name,
+            hand: if Some(player.name.as_str()) == username {
+                &player.hand
+            } else {
+                &[]
+            },
+            hand_count: player.hand.len(),
+            health: player.health,
+        })
+        .collect();
+
+    GameStateResponse {
+        players,
+        id: &game.id,
+        current_turn_player: game.current_turn_player,
+        draw_pile: &game.draw_pile,
+        discard_pile: &game.discard_pile,
+        no_shooting_played_by: game.no_shooting_played_by,
+        turn_state: &game.turn_state,
+        active_cards: &game.active_cards,
+        chat_messages: &game.chat_messages,
     }
 }
 
@@ -293,12 +347,17 @@ async fn handle_request(
         }
         (&Method::GET, "/gameState") => {
             let joincode: Option<String> = header_value(&req, "joincode");
+            let username: Option<String> = header_value(&req, "username");
             match joincode {
                 Some(joincode) => {
                     let mut games = state.games.lock().unwrap();
                     match games.get_mut(&joincode) {
                         Some(game) => {
-                            let body = serde_json::to_string(game).unwrap();
+                            let body = serde_json::to_string(&game_state_response_for_player(
+                                game,
+                                username.as_deref(),
+                            ))
+                            .unwrap();
                             Ok(json_response(StatusCode::OK, body))
                         }
                         None => Ok(text_response(
