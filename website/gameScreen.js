@@ -169,6 +169,7 @@ function renderGame() {
 function openModal(imageSrc, card) {
     const modal = document.getElementById('modal');
     const modalImage = document.getElementById('modalImage');
+    cardSelected = card.id;
     modalImage.src = imageSrc;
     modal.style.display = 'flex';
 

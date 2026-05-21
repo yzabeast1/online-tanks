@@ -65,6 +65,163 @@ fn current_timestamp() -> usize {
     }
 }
 
+fn card_stays_active(card: &Card) -> bool {
+    matches!(card.card_type, CardType::Shooting(ShootingType::Calculated))
+        || card.id == "firing-filter"
+        || card.id == "landmine"
+        || card.id == "no-shooting"
+}
+
+fn discard_blocking_firing_filter(
+    game: &mut GameState,
+    card: &Card,
+    req: &Request<Body>,
+) -> bool {
+    let Some(filter_type) = card.card_type.shooting_type() else {
+        return false;
+    };
+    let Some(target) = header_value(req, "target") else {
+        return false;
+    };
+    let Some(filter_index) = game
+        .active_cards
+        .active_firing_filters
+        .iter()
+        .position(|filter| filter.owner == target && filter.filter_type == filter_type)
+    else {
+        return false;
+    };
+
+    let filter = game.active_cards.active_firing_filters.remove(filter_index);
+    game.discard_pile.push(filter.card_played);
+    true
+}
+
+fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response<Body> {
+    let joincode = header_value(req, "joincode");
+    let username = header_value(req, "username");
+    let cardid = header_value(req, "cardid");
+
+    let (Some(joincode), Some(username), Some(cardid)) = (joincode, username, cardid) else {
+        return text_response(
+            StatusCode::BAD_REQUEST,
+            "missing joincode, username, or cardid",
+        );
+    };
+
+    let mut games = state.games.lock().unwrap();
+    let Some(game) = games.get_mut(&joincode) else {
+        return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
+    };
+
+    if game.players.is_empty() {
+        return text_response(StatusCode::BAD_REQUEST, "game has no players");
+    }
+
+    let player_index = game.current_turn_player;
+    if game.players[player_index].name != username {
+        return text_response(StatusCode::FORBIDDEN, "not your turn");
+    }
+
+    let hand = &game.players[player_index].hand;
+    let card_index = hand.iter().position(|card| card.id == cardid).or_else(|| {
+        cardid
+            .parse::<usize>()
+            .ok()
+            .filter(|index| *index < hand.len())
+    });
+
+    let Some(card_index) = card_index else {
+        return text_response(StatusCode::BAD_REQUEST, "card not found in hand");
+    };
+
+    let card = game.players[player_index].hand[card_index].clone();
+    if !(card.can_be_played)(&card, game, req) {
+        if discard_blocking_firing_filter(game, &card, req) {
+            return json_response(
+                StatusCode::OK,
+                serde_json::to_string(&serde_json::json!({"status": "blocked"})).unwrap(),
+            );
+        }
+        return text_response(StatusCode::BAD_REQUEST, "card cannot be played");
+    }
+
+    game.players[player_index].hand.remove(card_index);
+    (card.play)(&card, game, player_index, req);
+
+    match card.card_type {
+        CardType::Shooting(_) => {
+            game.turn_state.shooting_card_played += 1;
+        }
+        CardType::Event => {
+            game.turn_state.event_card_played = true;
+        }
+        _ => {}
+    }
+
+    if card.id == "more-ammo" {
+        game.turn_state.more_ammo_played += 1;
+    } else if card.id == "no-shooting" {
+        game.turn_state.no_shooting_played = true;
+        game.no_shooting_played_by = player_index as isize;
+    }
+
+    game.turn_state.total_cards_played += 1;
+    if !card_stays_active(&card) {
+        game.discard_pile.push(card);
+    }
+
+    json_response(
+        StatusCode::OK,
+        serde_json::to_string(&serde_json::json!({"status": "played"})).unwrap(),
+    )
+}
+
+fn activate_calculated_shooting_response(
+    req: &Request<Body>,
+    state: &Arc<ServerState>,
+) -> Response<Body> {
+    let joincode = header_value(req, "joincode");
+    let username = header_value(req, "username");
+    let cardid = header_value(req, "cardid");
+
+    let (Some(joincode), Some(username), Some(cardid)) = (joincode, username, cardid) else {
+        return text_response(
+            StatusCode::BAD_REQUEST,
+            "missing joincode, username, or cardid",
+        );
+    };
+
+    let mut games = state.games.lock().unwrap();
+    let Some(game) = games.get_mut(&joincode) else {
+        return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
+    };
+
+    let Some(active_index) = game
+        .active_cards
+        .active_calculated_shootings
+        .iter()
+        .position(|active| {
+            active.owner == username
+                && active.card_played.id == cardid
+                && active.turns_remaining == 0
+        })
+    else {
+        return text_response(StatusCode::BAD_REQUEST, "active calculated card not found");
+    };
+
+    let active = game
+        .active_cards
+        .active_calculated_shootings
+        .remove(active_index);
+    game.discard_pile.push(active.card_played);
+
+    json_response(
+        StatusCode::OK,
+        serde_json::to_string(&serde_json::json!({"status": "activated"})).unwrap(),
+    )
+}
+
 fn generate_joincode() -> String {
     use rand::Rng;
 
@@ -470,13 +627,19 @@ async fn handle_request(
                 (_, None) => Ok(text_response(StatusCode::BAD_REQUEST, "missing username")),
             }
         }
-        (&Method::POST, "/playCard")
-        | (&Method::POST, "/activateDelayedCard")
-        | (&Method::POST, "/useRadar") => Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header("content-type", "application/json")
-            .body(Body::from("{}"))
-            .unwrap()),
+        (&Method::POST, "/playCard") | (&Method::POST, "/playcard") => {
+            Ok(play_card_response(&req, &state))
+        }
+        (&Method::POST, "/activateCalculatedShooting") => {
+            Ok(activate_calculated_shooting_response(&req, &state))
+        }
+        (&Method::POST, "/activateDelayedCard") | (&Method::POST, "/useRadar") => {
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap())
+        }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(Body::from("Not found"))

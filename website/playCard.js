@@ -1,10 +1,13 @@
 var cardSelected;
 function playCard() {
-    var card = document.getElementById('modalImage').src
-    card = card.split("/")
-    card = card[card.length - 1]
-    card = card.split(".")
-    card = card[0]
+    var card = cardSelected
+    if (!card) {
+        card = document.getElementById('modalImage').src
+        card = card.split("/")
+        card = card[card.length - 1]
+        card = card.split(".")
+        card = card[0]
+    }
     cardSelected = card
     document.getElementById('playCardBtn').onclick = sendPlayedCardToServer
     
@@ -14,6 +17,9 @@ function playCard() {
         let isShooting = typeof deckCard.card_type === 'object' && deckCard.card_type !== null && deckCard.card_type.hasOwnProperty('Shooting');
         if (isShooting || deckCard.id === 'airstrike' || deckCard.id === 'steal') {
             actions.push('target');
+        }
+        if (deckCard.id === 'firing-filter') {
+            actions.push('firing_filter_type');
         }
     }
     triggerActions(actions);
@@ -29,6 +35,8 @@ function triggerActions(actions) {
             createDiscardDropdown(action);
         } else if (action == 'queuedcard') {
             createQueuedCardDropdown(username);
+        } else if (action == 'firing_filter_type') {
+            createFiringFilterTypeDropdown();
         }
     });
 
@@ -54,6 +62,26 @@ function createQueuedCardDropdown(username) {
             dropdown.appendChild(option);
         });
     }
+
+    popupContent.appendChild(dropdown);
+    popupContent.appendChild(document.createElement('br'))
+}
+function createFiringFilterTypeDropdown() {
+    const popupContent = document.getElementById('popupContent');
+    const label = document.createElement('label');
+    label.innerText = 'Select a shooting type: ';
+    popupContent.appendChild(label);
+
+    const dropdown = document.createElement('select');
+    dropdown.id = 'firingFilterTypeDropdown';
+    dropdown.innerHTML = '';
+
+    ['Quick', 'Calculated', 'Boom'].forEach(type => {
+        const option = document.createElement('option');
+        option.value = type;
+        option.text = type;
+        dropdown.appendChild(option);
+    });
 
     popupContent.appendChild(dropdown);
     popupContent.appendChild(document.createElement('br'))
@@ -128,18 +156,19 @@ function sendPlayedCardToServer() {
     const discardOptions = Array.from(document.querySelectorAll('[id^=discardDropdown_]'))
         .map(dropdown => dropdown.value);
     const queuedCard = document.getElementById('queuedCardDropdown')?.value
+    const firingFilterType = document.getElementById('firingFilterTypeDropdown')?.value
     console.log('Target:', selectedPlayer || 'No player selected');
     console.log('Discard options:', discardOptions || 'No discard');
-    var cardid = findCardInPlayerHand(cardSelected, username);
     var headers = {
         joincode: joincode,
         username: username,
-        cardid: cardid
+        cardid: cardSelected
     }
     if (selectedPlayer) headers['target'] = selectedPlayer
     if (discardOptions[0]) headers['discardcard'] = discardOptions[0]
     if (discardOptions[1]) headers['discardcardtwo'] = discardOptions[1]
     if (queuedCard) headers['queuedcard'] = queuedCard
+    if (firingFilterType) headers['firing_filter_type'] = firingFilterType
     console.log(headers)
     postWithFallback(`https://${serverip}/playcard`, headers)
     // You can now process the selected player and discard options here

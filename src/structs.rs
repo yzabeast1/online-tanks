@@ -9,12 +9,19 @@ pub fn default_can_be_played() -> fn(&Card, &GameState, &Request<Body>) -> bool 
     crate::cards::can_never_play
 }
 
-pub fn default_play() -> fn(&Card, &mut GameState, usize) {
+pub fn default_play() -> fn(&Card, &mut GameState, usize, &Request<Body>) {
     crate::cards::stub_play
 }
 
 pub fn default_when_done() -> fn() {
     crate::cards::stub_when_done
+}
+
+pub fn default_active_card() -> Card {
+    crate::cards::all_cards()
+        .into_iter()
+        .next()
+        .expect("card list should not be empty")
 }
 
 use crate::cards::all_cards;
@@ -57,7 +64,7 @@ pub struct Card {
     #[serde(skip, default = "crate::structs::default_can_be_played")]
     pub can_be_played: fn(&Card, &GameState, &Request<Body>) -> bool,
     #[serde(skip, default = "crate::structs::default_play")]
-    pub play: fn(&Card, &mut GameState, usize),
+    pub play: fn(&Card, &mut GameState, usize, &Request<Body>),
     #[serde(skip)]
     pub count: usize,
 }
@@ -115,11 +122,15 @@ pub struct ActiveCalculatedShooting {
 pub struct ActiveFitingFilter {
     pub owner: String,
     pub filter_type: ShootingType,
+    #[serde(default = "crate::structs::default_active_card")]
+    pub card_played: Card,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ActiveCards {
     pub landmine_played_by: isize,
+    pub landmine_card: Option<Card>,
+    pub no_shooting_card: Option<Card>,
     pub active_calculated_shootings: Vec<ActiveCalculatedShooting>,
     pub active_firing_filters: Vec<ActiveFitingFilter>,
 }
@@ -128,6 +139,8 @@ impl ActiveCards {
     pub fn new() -> Self {
         return ActiveCards {
             landmine_played_by: -1,
+            landmine_card: None,
+            no_shooting_card: None,
             active_calculated_shootings: Vec::new(),
             active_firing_filters: Vec::new(),
         };
@@ -229,13 +242,23 @@ impl GameState {
         self.turn_state = TurnState::new();
         for calculated_shooting in self.active_cards.active_calculated_shootings.iter_mut() {
             if calculated_shooting.owner == self.players[self.current_turn_player].name {
-                calculated_shooting.turns_remaining -= 1;
+                calculated_shooting.turns_remaining =
+                    calculated_shooting.turns_remaining.saturating_sub(1);
             }
         }
         self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
+        if self.no_shooting_played_by == self.current_turn_player as isize {
+            if let Some(card) = self.active_cards.no_shooting_card.take() {
+                self.discard_pile.push(card);
+            }
+            self.no_shooting_played_by = -1;
+        }
         self.draw_card(self.current_turn_player);
         if self.active_cards.landmine_played_by != -1 && rand::thread_rng().gen_bool(0.5) {
             self.active_cards.landmine_played_by = -1;
+            if let Some(card) = self.active_cards.landmine_card.take() {
+                self.discard_pile.push(card);
+            }
             self.damage_player(self.current_turn_player, 6);
         }
     }
@@ -269,12 +292,28 @@ impl GameState {
         let player_name = self.players[player_index].name.clone();
         let was_their_turn = self.current_turn_player == player_index;
 
-        self.active_cards
-            .active_firing_filters
-            .retain(|filter| filter.owner != player_name);
-        self.active_cards
-            .active_calculated_shootings
-            .retain(|shooting| shooting.owner != player_name);
+        let mut active_firing_filters = std::mem::take(&mut self.active_cards.active_firing_filters);
+        active_firing_filters.retain(|filter| {
+            if filter.owner == player_name {
+                self.discard_pile.push(filter.card_played.clone());
+                false
+            } else {
+                true
+            }
+        });
+        self.active_cards.active_firing_filters = active_firing_filters;
+
+        let mut active_calculated_shootings =
+            std::mem::take(&mut self.active_cards.active_calculated_shootings);
+        active_calculated_shootings.retain(|shooting| {
+            if shooting.owner == player_name {
+                self.discard_pile.push(shooting.card_played.clone());
+                false
+            } else {
+                true
+            }
+        });
+        self.active_cards.active_calculated_shootings = active_calculated_shootings;
 
         if self.no_shooting_played_by == player_index as isize {
             self.no_shooting_played_by = if self.players.len() > 1 {
@@ -380,6 +419,27 @@ impl GameState {
             {
                 active.card_played.can_be_played = template.can_be_played;
                 active.card_played.play = template.play;
+            }
+        }
+        for active in &mut self.active_cards.active_firing_filters {
+            if let Some(template) = template_cards
+                .iter()
+                .find(|t| t.id == active.card_played.id)
+            {
+                active.card_played.can_be_played = template.can_be_played;
+                active.card_played.play = template.play;
+            }
+        }
+        if let Some(card) = &mut self.active_cards.landmine_card {
+            if let Some(template) = template_cards.iter().find(|t| t.id == card.id) {
+                card.can_be_played = template.can_be_played;
+                card.play = template.play;
+            }
+        }
+        if let Some(card) = &mut self.active_cards.no_shooting_card {
+            if let Some(template) = template_cards.iter().find(|t| t.id == card.id) {
+                card.can_be_played = template.can_be_played;
+                card.play = template.play;
             }
         }
     }
