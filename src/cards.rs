@@ -1,5 +1,6 @@
-use crate::structs::*;
+use crate::{header_value, structs::*};
 use hyper::{Body, Request};
+use rand::{Rng, thread_rng};
 
 pub fn stub_play(_: &Card, _: &mut GameState, _: usize, _: &Request<Body>) {}
 
@@ -20,7 +21,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "repair".to_string(),
             card_type: CardType::Support,
             can_be_played: can_play_repair,
-            play: stub_play,
+            play: play_repair,
             count: 6,
         },
         Card {
@@ -36,7 +37,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "repair-kit".to_string(),
             card_type: CardType::Support,
             can_be_played: can_play_repair,
-            play: stub_play,
+            play: play_repair_kit,
             count: 3,
         },
         Card {
@@ -76,7 +77,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "steal".to_string(),
             card_type: CardType::Plus,
             can_be_played: can_play_steal,
-            play: stub_play,
+            play: play_steal,
             count: 6,
         },
         Card {
@@ -84,7 +85,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "draw-2".to_string(),
             card_type: CardType::Plus,
             can_be_played: can_always_play,
-            play: stub_play,
+            play: play_draw_2,
             count: 3,
         },
         Card {
@@ -100,7 +101,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "painful-draw".to_string(),
             card_type: CardType::Plus,
             can_be_played: can_always_play,
-            play: stub_play,
+            play: play_painful_draw,
             count: 2,
         },
         Card {
@@ -108,7 +109,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "crack".to_string(),
             card_type: CardType::Shooting(ShootingType::Quick),
             can_be_played: can_play_quick_shooting,
-            play: stub_play,
+            play: play_crack,
             count: 5,
         },
         Card {
@@ -116,7 +117,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "dent".to_string(),
             card_type: CardType::Shooting(ShootingType::Quick),
             can_be_played: can_play_quick_shooting,
-            play: stub_play,
+            play: play_dent,
             count: 10,
         },
         Card {
@@ -124,7 +125,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "stolen-parts".to_string(),
             card_type: CardType::Shooting(ShootingType::Quick),
             can_be_played: can_play_quick_shooting,
-            play: stub_play,
+            play: play_stolen_parts,
             count: 5,
         },
         Card {
@@ -172,7 +173,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "big-bomb".to_string(),
             card_type: CardType::Shooting(ShootingType::Boom),
             can_be_played: can_play_boom_shooting,
-            play: stub_play,
+            play: play_big_bomb,
             count: 4,
         },
         Card {
@@ -180,7 +181,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "small-bomb".to_string(),
             card_type: CardType::Shooting(ShootingType::Boom),
             can_be_played: can_play_boom_shooting,
-            play: stub_play,
+            play: play_small_bomb,
             count: 10,
         },
         Card {
@@ -188,7 +189,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "landmine".to_string(),
             card_type: CardType::Shooting(ShootingType::Boom),
             can_be_played: can_play_boom_shooting,
-            play: stub_play,
+            play: play_landmine,
             count: 1,
         },
         Card {
@@ -196,7 +197,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "nuke".to_string(),
             card_type: CardType::Shooting(ShootingType::Boom),
             can_be_played: can_play_nuke,
-            play: stub_play,
+            play: play_nuke,
             count: 1,
         },
         Card {
@@ -204,7 +205,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "no-shooting".to_string(),
             card_type: CardType::Event,
             can_be_played: can_play_no_shooting,
-            play: stub_play,
+            play: play_no_shooting,
             count: 2,
         },
         Card {
@@ -212,7 +213,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "more-ammo".to_string(),
             card_type: CardType::Event,
             can_be_played: can_play_more_ammo,
-            play: stub_play,
+            play: play_more_ammo,
             count: 2,
         },
         Card {
@@ -236,7 +237,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "spray".to_string(),
             card_type: CardType::Event,
             can_be_played: can_play_event,
-            play: stub_play,
+            play: play_spray,
             count: 1,
         },
         Card {
@@ -244,7 +245,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "lottery".to_string(),
             card_type: CardType::Event,
             can_be_played: can_play_lottery,
-            play: stub_play,
+            play: play_lottery,
             count: 1,
         },
         Card {
@@ -252,7 +253,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "health-hazard".to_string(),
             card_type: CardType::Event,
             can_be_played: can_play_event,
-            play: stub_play,
+            play: play_health_hazard,
             count: 2,
         },
         Card {
@@ -329,11 +330,19 @@ fn can_play_cold_war(_: &Card, game_state: &GameState, _: &Request<Body>) -> boo
     return true;
 }
 
-fn can_play_nuke(_card: &Card, game_state: &GameState, _req: &Request<Body>) -> bool {
+fn can_play_nuke(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
+    if game_state
+        .player_by_name(&header_value(req, "target").unwrap())
+        .unwrap()
+        .health
+        == 2
+    {
+        return false;
+    }
     if game_state.turn_state.total_cards_played != 0 {
         return false;
     }
-    return can_play_boom_shooting(_card, game_state, _req);
+    return can_play_boom_shooting(_card, game_state, req);
 }
 
 fn can_play_distractor_missile(_card: &Card, game_state: &GameState, _req: &Request<Body>) -> bool {
@@ -495,4 +504,95 @@ fn can_play_steal(_card: &Card, game_state: &GameState, req: &Request<Body>) -> 
         return false;
     }
     return true;
+}
+
+fn play_repair(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
+    game_state.players[player_index].health += 1;
+}
+fn play_repair_kit(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
+    game_state.players[player_index].health += 3;
+}
+fn play_landmine(card: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
+    game_state.active_cards.landmine_played_by = player_index as isize;
+    game_state.active_cards.landmine_card = Some(card.clone());
+}
+fn play_no_shooting(
+    card: &Card,
+    game_state: &mut GameState,
+    player_index: usize,
+    _: &Request<Body>,
+) {
+    game_state.no_shooting_played_by = player_index as isize;
+    game_state.active_cards.no_shooting_card = Some(card.clone());
+    game_state.turn_state.no_shooting_played = true;
+}
+fn play_steal(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
+    let target = header_value(req, "target").unwrap();
+    let hand = &mut game_state.player_by_name_mut(&target).unwrap().hand;
+    let card_index = thread_rng().gen_range(0..hand.len());
+    let stolen_card = hand[card_index].clone();
+    hand.remove(card_index);
+    game_state.players[player_index].hand.push(stolen_card);
+}
+fn play_draw_2(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
+    game_state.draw_card(player_index);
+    game_state.draw_card(player_index);
+}
+fn play_lottery(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
+    game_state.draw_card(player_index);
+    game_state.draw_card(player_index);
+    game_state.draw_card(player_index);
+    game_state.draw_card(player_index);
+    game_state.draw_card(player_index);
+}
+fn play_painful_draw(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
+    game_state.draw_card(player_index);
+    game_state.draw_card(player_index);
+    game_state.draw_card(player_index);
+    game_state.damage_player(player_index, 2);
+}
+fn play_more_ammo(_: &Card, game_state: &mut GameState, _: usize, _: &Request<Body>) {
+    game_state.turn_state.more_ammo_played += 1;
+}
+fn play_health_hazard(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
+    let target = header_value(req, "target").unwrap();
+    game_state.player_by_name_mut(&target).unwrap().health = thread_rng().gen_range(1..=10);
+}
+fn play_spray(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
+    game_state.players[player_index].health += 1;
+    for i in 1..game_state.players.len() {
+        game_state.damage_player(i, 3);
+    }
+}
+fn play_nuke(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
+    let target = header_value(req, "target").unwrap();
+    game_state.player_by_name_mut(&target).unwrap().health = 2;
+}
+fn play_big_bomb(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
+    let target = header_value(req, "target").unwrap();
+    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 6);
+    game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize * 5);
+}
+fn play_small_bomb(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
+    let target = header_value(req, "target").unwrap();
+    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 3);
+    game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize);
+}
+fn play_crack(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
+    let target = header_value(req, "target").unwrap();
+    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 2);
+}
+fn play_stolen_parts(
+    _: &Card,
+    game_state: &mut GameState,
+    player_index: usize,
+    req: &Request<Body>,
+) {
+    let target = header_value(req, "target").unwrap();
+    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 2);
+    game_state.players[player_index].health += 1;
+}
+fn play_dent(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
+    let target = header_value(req, "target").unwrap();
+    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 1);
 }

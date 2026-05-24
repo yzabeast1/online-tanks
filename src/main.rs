@@ -158,14 +158,6 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
         }
         _ => {}
     }
-
-    if card.id == "more-ammo" {
-        game.turn_state.more_ammo_played += 1;
-    } else if card.id == "no-shooting" {
-        game.turn_state.no_shooting_played = true;
-        game.no_shooting_played_by = player_index as isize;
-    }
-
     game.turn_state.total_cards_played += 1;
     if !card_stays_active(&card) {
         game.discard_pile.push(card);

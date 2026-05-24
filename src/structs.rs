@@ -379,6 +379,10 @@ impl GameState {
         self.players.iter().find(|player| player.name == name)
     }
 
+    pub fn player_index_from_name(&self, name: &str) -> Option<usize> {
+        self.players.iter().position(|player| player.name == name)
+    }
+
     pub fn player_by_name_mut(&mut self, name: &str) -> Option<&mut Player> {
         self.players.iter_mut().find(|player| player.name == name)
     }
