@@ -227,6 +227,14 @@ impl GameState {
         };
     }
 
+    pub fn push_server_chat_message(&mut self, message: String) {
+        self.chat_messages.push(ChatMessage {
+            sender: "server".to_string(),
+            message,
+            timestamp: crate::current_timestamp(),
+        });
+    }
+
     pub fn start_game(&mut self) {
         self.current_turn_player = rand::thread_rng().gen_range(0..self.players.len());
         self.draw_pile = all_cards();
@@ -250,27 +258,36 @@ impl GameState {
         if self.no_shooting_played_by == self.current_turn_player as isize {
             if let Some(card) = self.active_cards.no_shooting_card.take() {
                 self.discard_pile.push(card);
+                self.push_server_chat_message("No Shooting went out of play".to_string());
             }
             self.no_shooting_played_by = -1;
         }
         let current_player_name = self.players[self.current_turn_player].name.clone();
         let mut active_firing_filters =
             std::mem::take(&mut self.active_cards.active_firing_filters);
+        let mut discarded_firing_filter_names = Vec::new();
         active_firing_filters.retain(|filter| {
             if filter.owner == current_player_name {
                 self.discard_pile.push(filter.card_played.clone());
+                discarded_firing_filter_names.push(filter.card_played.name.clone());
                 return false;
             } else {
                 return true;
             }
         });
         self.active_cards.active_firing_filters = active_firing_filters;
+        for discarded_filter_name in discarded_firing_filter_names {
+            self.push_server_chat_message(format!("{} went out of play", discarded_filter_name));
+        }
         self.draw_card(self.current_turn_player);
         if self.active_cards.landmine_played_by != -1 && rand::thread_rng().gen_bool(0.5) {
+            let hit_player_name = self.players[self.current_turn_player].name.clone();
             self.active_cards.landmine_played_by = -1;
             if let Some(card) = self.active_cards.landmine_card.take() {
                 self.discard_pile.push(card);
+                self.push_server_chat_message("Landmine went out of play".to_string());
             }
+            self.push_server_chat_message(format!("Landmine hit {}", hit_player_name));
             self.damage_player(self.current_turn_player, 6);
         }
     }
@@ -288,9 +305,13 @@ impl GameState {
 
         if self.players[player_index].health < 1 {
             if let Some(last_stand_index) = has_last_stand {
+                let player_name = self.players[player_index].name.clone();
                 self.players[player_index].health = 1;
                 self.players[player_index].hand.remove(last_stand_index);
+                self.push_server_chat_message(format!("Last Stand activated for {}", player_name));
             } else {
+                let player_name = self.players[player_index].name.clone();
+                self.push_server_chat_message(format!("{} died", player_name));
                 self.remove_player(player_index, true);
             }
         }

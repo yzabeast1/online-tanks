@@ -93,16 +93,295 @@ fn card_stays_active(card: &Card) -> bool {
         || card.id == "no-shooting"
 }
 
+fn card_log_value(card: &Card) -> serde_json::Value {
+    serde_json::json!({
+        "id": card.id,
+        "name": card.name,
+        "card_type": format!("{:?}", card.card_type),
+    })
+}
+
+fn card_target_damage(card: &Card) -> Option<usize> {
+    match card.id.as_str() {
+        "crack" => Some(2),
+        "dent" => Some(1),
+        "stolen-parts" => Some(2),
+        "big-bomb" => Some(6),
+        "small-bomb" => Some(3),
+        _ => None,
+    }
+}
+
+fn damage_amount(before: isize, after: isize) -> Option<usize> {
+    (before > after).then_some((before - after) as usize)
+}
+
+fn format_discarded_cards(discarded_cards: &[Card]) -> String {
+    discarded_cards
+        .iter()
+        .map(|card| card.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn format_play_event_message(
+    player: &str,
+    card: &Card,
+    target_name: Option<&str>,
+    firing_filter_type: Option<&str>,
+    discarded_cards: &[Card],
+    current_player_health_before: isize,
+    current_player_health_after: isize,
+) -> String {
+    let mut message = format!("{} played {}", player, card.name);
+
+    if let Some(target_name) = target_name {
+        message.push_str(&format!(" against {}", target_name));
+        if let Some(target_damage) = card_target_damage(card) {
+            message.push_str(&format!(" dealing {} damage", target_damage));
+        }
+    }
+
+    if !discarded_cards.is_empty() {
+        message.push_str(&format!(" and discarded {}", format_discarded_cards(discarded_cards)));
+    }
+
+    if let Some(self_damage) = damage_amount(current_player_health_before, current_player_health_after) {
+        message.push_str(&format!(" and took {} damage", self_damage));
+    }
+
+    if card.id == "firing-filter" {
+        if let Some(firing_filter_type) = firing_filter_type {
+            message.push_str(&format!(" filtering {}", firing_filter_type));
+        }
+    }
+
+    message
+}
+
+fn resolved_hand_card(hand: &[Card], value: Option<String>) -> Option<Card> {
+    let value = value?;
+    if let Ok(index) = value.parse::<usize>() {
+        return hand.get(index).cloned();
+    }
+
+    hand.iter().find(|card| card.id == value).cloned()
+}
+
+fn selected_card_value(hand: &[Card], name: &str, req: &Request<Body>) -> Option<serde_json::Value> {
+    let raw = header_value(req, name)?;
+    let resolved_card = resolved_hand_card(hand, Some(raw.clone()));
+    Some(serde_json::json!({
+        "raw": raw,
+        "resolved_card": resolved_card.as_ref().map(card_log_value),
+    }))
+}
+
+fn removed_card(before: &[Card], after: &[Card]) -> Option<Card> {
+    let mut after_cards = after.to_vec();
+    for card in before {
+        if let Some(position) = after_cards.iter().position(|candidate| {
+            candidate.id == card.id
+                && candidate.name == card.name
+                && candidate.card_type == card.card_type
+        }) {
+            after_cards.remove(position);
+        } else {
+            return Some(card.clone());
+        }
+    }
+    None
+}
+
+fn log_play_event(
+    game: &mut GameState,
+    joincode: &str,
+    username: &str,
+    card: &Card,
+    req: &Request<Body>,
+    hand_before: &[Card],
+    status: &str,
+    discarded_cards: &[Card],
+    blocked_filter: Option<&Card>,
+    stays_active: bool,
+    current_player_health_before: isize,
+    current_player_health_after: isize,
+    target_name: Option<String>,
+    target_health_before: Option<isize>,
+    target_hand_before: Option<&[Card]>,
+    target_hand_after: Option<&[Card]>,
+) {
+    let mut payload = serde_json::Map::new();
+    payload.insert("event".to_string(), serde_json::json!("play_card"));
+    payload.insert("joincode".to_string(), serde_json::json!(joincode));
+    payload.insert("player".to_string(), serde_json::json!(username));
+    payload.insert("card".to_string(), card_log_value(card));
+    payload.insert("status".to_string(), serde_json::json!(status));
+
+    if let Some(target) = target_name.clone() {
+        payload.insert("target".to_string(), serde_json::json!(target));
+    }
+
+    if let Some(target_health_before) = target_health_before {
+        payload.insert(
+            "target_health_before".to_string(),
+            serde_json::json!(target_health_before),
+        );
+    }
+
+    if let Some(target_hand_before) = target_hand_before {
+        payload.insert(
+            "target_hand_before_count".to_string(),
+            serde_json::json!(target_hand_before.len()),
+        );
+    }
+
+    if let Some(value) = selected_card_value(hand_before, "discardcard", req) {
+        payload.insert("discardcard".to_string(), value);
+    }
+
+    if let Some(value) = selected_card_value(hand_before, "discardcardtwo", req) {
+        payload.insert("discardcardtwo".to_string(), value);
+    }
+
+    if let Some(value) = selected_card_value(hand_before, "queuedcard", req) {
+        payload.insert("queuedcard".to_string(), value);
+    }
+
+    if let Some(firing_filter_type) = header_value(req, "firing_filter_type") {
+        payload.insert(
+            "firing_filter_type".to_string(),
+            serde_json::json!(firing_filter_type),
+        );
+    }
+
+    if !discarded_cards.is_empty() {
+        payload.insert(
+            "discarded_cards".to_string(),
+            serde_json::Value::Array(discarded_cards.iter().map(card_log_value).collect()),
+        );
+    }
+
+    if let Some(blocked_filter) = blocked_filter {
+        payload.insert(
+            "blocked_filter".to_string(),
+            card_log_value(blocked_filter),
+        );
+    }
+
+    payload.insert(
+        "current_player_health_before".to_string(),
+        serde_json::json!(current_player_health_before),
+    );
+    payload.insert("stays_active".to_string(), serde_json::json!(stays_active));
+
+    match card.id.as_str() {
+        "repair" => {
+            payload.insert("healed".to_string(), serde_json::json!(1));
+        }
+        "repair-kit" => {
+            payload.insert("healed".to_string(), serde_json::json!(3));
+        }
+        "draw-2" => {
+            payload.insert("cards_drawn".to_string(), serde_json::json!(2));
+        }
+        "lottery" => {
+            payload.insert("cards_drawn".to_string(), serde_json::json!(5));
+        }
+        "painful-draw" => {
+            payload.insert("cards_drawn".to_string(), serde_json::json!(3));
+            payload.insert("self_damage".to_string(), serde_json::json!(2));
+        }
+        "more-ammo" => {
+            payload.insert("more_ammo_added".to_string(), serde_json::json!(1));
+        }
+        "spray" => {
+            payload.insert("self_healed".to_string(), serde_json::json!(1));
+            payload.insert("other_players_damage".to_string(), serde_json::json!(3));
+        }
+        "health-hazard" => {
+            payload.insert("target_health_randomized".to_string(), serde_json::json!(true));
+            if let Some(target_health_before) = target_health_before {
+                payload.insert(
+                    "target_health_before".to_string(),
+                    serde_json::json!(target_health_before),
+                );
+            }
+        }
+        "nuke" => {
+            payload.insert("target_health_set_to".to_string(), serde_json::json!(2));
+        }
+        "crack" => {
+            payload.insert("target_damage".to_string(), serde_json::json!(2));
+        }
+        "dent" => {
+            payload.insert("target_damage".to_string(), serde_json::json!(1));
+        }
+        "stolen-parts" => {
+            payload.insert("target_damage".to_string(), serde_json::json!(2));
+            payload.insert("self_healed".to_string(), serde_json::json!(1));
+        }
+        "big-bomb" => {
+            payload.insert("target_damage".to_string(), serde_json::json!(6));
+        }
+        "small-bomb" => {
+            payload.insert("target_damage".to_string(), serde_json::json!(3));
+        }
+        "firing-filter" => {
+            if let Some(firing_filter_type) = header_value(req, "firing_filter_type") {
+                payload.insert("filter_type".to_string(), serde_json::json!(firing_filter_type));
+            }
+        }
+        _ => {}
+    }
+
+    if card.id == "steal" {
+        if let (Some(target_hand_before), Some(target_hand_after)) =
+            (target_hand_before, target_hand_after)
+        {
+            if let Some(stolen_card) = removed_card(target_hand_before, target_hand_after) {
+                payload.insert("stolen_card".to_string(), card_log_value(&stolen_card));
+            }
+        }
+    }
+
+    let message = if status == "played" {
+        let discarded_cards_for_message: Vec<Card> = discarded_cards
+            .iter()
+            .filter(|discarded_card| {
+                discarded_card.id != card.id
+                    || discarded_card.name != card.name
+                    || discarded_card.card_type != card.card_type
+            })
+            .cloned()
+            .collect();
+
+        format_play_event_message(
+            username,
+            card,
+            target_name.as_deref(),
+            header_value(req, "firing_filter_type").as_deref(),
+            &discarded_cards_for_message,
+            current_player_health_before,
+            current_player_health_after,
+        )
+    } else {
+        serde_json::Value::Object(payload).to_string()
+    };
+
+    game.push_server_chat_message(message);
+}
+
 fn discard_blocking_firing_filter(
     game: &mut GameState,
     card: &Card,
     req: &Request<Body>,
-) -> bool {
+) -> Option<Card> {
     let Some(filter_type) = card.card_type.shooting_type() else {
-        return false;
+        return None;
     };
     let Some(target) = header_value(req, "target") else {
-        return false;
+        return None;
     };
     let Some(filter_index) = game
         .active_cards
@@ -110,12 +389,10 @@ fn discard_blocking_firing_filter(
         .iter()
         .position(|filter| filter.owner == target && filter.filter_type == filter_type)
     else {
-        return false;
+        return None;
     };
 
-    let filter = game.active_cards.active_firing_filters.remove(filter_index);
-    game.discard_pile.push(filter.card_played);
-    true
+    Some(game.active_cards.active_firing_filters[filter_index].card_played.clone())
 }
 
 fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response<Body> {
@@ -156,19 +433,69 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
         return text_response(StatusCode::BAD_REQUEST, "card not found in hand");
     };
 
+    let hand_before = game.players[player_index].hand.clone();
+    let current_player_health_before = game.players[player_index].health;
+    let target_name = header_value(req, "target");
+    let (target_health_before, target_hand_before) = target_name.as_ref().and_then(|name| {
+        game.player_by_name(name).map(|player| {
+            (
+                Some(player.health),
+                Some(player.hand.clone()),
+            )
+        })
+    }).unwrap_or((None, None));
+
     let card = game.players[player_index].hand[card_index].clone();
     if !(card.can_be_played)(&card, game, req) {
-        if discard_blocking_firing_filter(game, &card, req) {
+        if let Some(discarded_filter) = discard_blocking_firing_filter(game, &card, req) {
+            log_play_event(
+                game,
+                &joincode,
+                &username,
+                &card,
+                req,
+                &hand_before,
+                "blocked",
+                &[],
+                Some(&discarded_filter),
+                false,
+                current_player_health_before,
+                current_player_health_before,
+                target_name.clone(),
+                target_health_before,
+                target_hand_before.as_deref(),
+                target_hand_before.as_deref(),
+            );
             return json_response(
                 StatusCode::OK,
                 serde_json::to_string(&serde_json::json!({"status": "blocked"})).unwrap(),
             );
         }
+        log_play_event(
+            game,
+            &joincode,
+            &username,
+            &card,
+            req,
+            &hand_before,
+            "rejected",
+            &[],
+            None,
+            false,
+            current_player_health_before,
+            current_player_health_before,
+            target_name.clone(),
+            target_health_before,
+            target_hand_before.as_deref(),
+            target_hand_before.as_deref(),
+        );
         return text_response(StatusCode::BAD_REQUEST, "card cannot be played");
     }
 
     game.players[player_index].hand.remove(card_index);
     (card.play)(&card, game, player_index, req);
+
+    let mut discarded_cards = Vec::new();
 
     match card.card_type {
         CardType::Shooting(_) => {
@@ -181,8 +508,34 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
     }
     game.turn_state.total_cards_played += 1;
     if !card_stays_active(&card) {
-        game.discard_pile.push(card);
+        game.discard_pile.push(card.clone());
+        discarded_cards.push(card.clone());
     }
+
+    let current_player_health_after = game.players[player_index].health;
+
+    let target_hand_after = target_name
+        .as_ref()
+        .and_then(|name| game.player_by_name(name).map(|player| player.hand.clone()));
+
+    log_play_event(
+        game,
+        &joincode,
+        &username,
+        &card,
+        req,
+        &hand_before,
+        "played",
+        &discarded_cards,
+        None,
+        card_stays_active(&card),
+        current_player_health_before,
+        current_player_health_after,
+        target_name.clone(),
+        target_health_before,
+        target_hand_before.as_deref(),
+        target_hand_after.as_deref(),
+    );
 
     json_response(
         StatusCode::OK,
@@ -625,6 +978,7 @@ async fn handle_request(
                         Some(game) => {
                             // Find the quitting player
                             if let Some(player_index) = game.players.iter().position(|p| p.name == username) {
+                                game.push_server_chat_message(format!("{} quit", username));
                                 if game.remove_player(player_index, true) {
                                     games.remove(&joincode);
                                 }

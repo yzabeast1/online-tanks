@@ -7,7 +7,7 @@ var playersInLobbyCooldown = 1000;
 var lobbyPlayersInterval = 0
 var lobbyStartedCheckCoooldown = 1000
 var lobbyStartedCheckInterval = 0;
-var serverip = 'tanks.hosted.internal:8443'
+var serverip = 'yzabeast1.run.place:444'
 function startSpectating() {
     spectating = true
     username = document.getElementById('username-input').value;
