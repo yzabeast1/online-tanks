@@ -8,6 +8,18 @@ var gameStateInterval = 0;
 var gameStateCooldown=1000;
 var spectating = false;
 
+function cardImageFolder(cardType) {
+    if (typeof cardType === 'string') {
+        return cardType.toLowerCase();
+    }
+
+    if (cardType && typeof cardType === 'object' && cardType.Shooting) {
+        return 'shooting';
+    }
+
+    return 'support';
+}
+
 function spectateGame() {
     document.getElementById('spectate-when-dead').style.display = 'none'
     spectating = true
@@ -136,11 +148,11 @@ function renderGame() {
 
                         const img = document.createElement('img');
                         if (!hidden) {
-                            img.src = `https://raw.githubusercontent.com/yzabeast1/tanks/refs/heads/master/server/cards/${card.id}.png`;  // Use card ID to get the front image
+                            img.src = `https://${serverip}/images/${cardImageFolder(card.card_type)}/${card.id}.png`;  // Use card ID to get the front image
                             img.alt = card.name;
                             cardDiv.classList.add('my-hand');
                         } else {
-                            img.src = `https://raw.githubusercontent.com/yzabeast1/tanks/refs/heads/master/server/cards/back.png`;  // Use the back image for others
+                            img.src = `https://${serverip}/images/back.png`;  // Use the back image for others
                             img.alt = 'Card Back';
                         }
 

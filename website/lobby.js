@@ -159,13 +159,25 @@ function toggleDeck() {
     else deck.style.display = 'block'
 }
 window.onload = createDeck
+function cardImageFolder(cardType) {
+    if (typeof cardType === 'string') {
+        return cardType.toLowerCase();
+    }
+
+    if (cardType && typeof cardType === 'object' && cardType.Shooting) {
+        return 'shooting';
+    }
+
+    return 'support';
+}
+
 function createDeck() {
     const deckDiv = document.getElementById('show-deck');
     fetchWithFallback("https://" + serverip + "/getDeck").then(deck => {
         deck.forEach(card => {
             // Create an image element
             const img = document.createElement('img');
-            img.src = `https://raw.githubusercontent.com/yzabeast1/online-tanks/refs/heads/master/images/${card['card_type'].toLowerCase()}/${card['id']}.png`; // Set the image source to the card's image location
+            img.src = `https://${serverip}/images/${cardImageFolder(card['card_type'])}/${card['id']}.png`; // Set the image source to the card's image location
             img.alt = card.name; // Set the alt text to the card's name
             img.style.width = '150px'; // Optional: set the image size
             img.style.margin = '10px'; // Optional: add some margin between images

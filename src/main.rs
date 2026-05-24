@@ -15,6 +15,7 @@ use tokio_rustls::TlsAcceptor;
 use crate::cards::all_cards;
 
 const WEBSITE_DIR: &str = "./website";
+const IMAGES_DIR: &str = "./images";
 
 async fn serve_file(path: &str, content_type: &str) -> Result<Response<Body>, Infallible> {
     match tokio::fs::read(path).await {
@@ -28,6 +29,26 @@ async fn serve_file(path: &str, content_type: &str) -> Result<Response<Body>, In
             .body(Body::from("Not found"))
             .unwrap()),
     }
+}
+
+fn image_content_type(path: &str) -> &'static str {
+    match std::path::Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        _ => "application/octet-stream",
+    }
+}
+
+async fn serve_image(path: &str) -> Result<Response<Body>, Infallible> {
+    serve_file(path, image_content_type(path)).await
 }
 
 fn header_value(req: &Request<Body>, name: &str) -> Option<String> {
@@ -332,6 +353,10 @@ async fn handle_request(
         (&Method::GET, "/css.css") => {
             let p = format!("{}/css.css", WEBSITE_DIR);
             serve_file(&p, "text/css; charset=utf-8").await
+        }
+        (&Method::GET, image_path) if image_path.starts_with("/images/") => {
+            let p = format!("{}/{}", IMAGES_DIR, &image_path[8..]);
+            serve_image(&p).await
         }
         (&Method::GET, "/gameScreen.js")
         | (&Method::GET, "/lobby.js")
