@@ -119,7 +119,7 @@ pub struct ActiveCalculatedShooting {
     pub card_played: Card,
 }
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ActiveFitingFilter {
+pub struct ActiveFiringFilter {
     pub owner: String,
     pub filter_type: ShootingType,
     #[serde(default = "crate::structs::default_active_card")]
@@ -132,7 +132,7 @@ pub struct ActiveCards {
     pub landmine_card: Option<Card>,
     pub no_shooting_card: Option<Card>,
     pub active_calculated_shootings: Vec<ActiveCalculatedShooting>,
-    pub active_firing_filters: Vec<ActiveFitingFilter>,
+    pub active_firing_filters: Vec<ActiveFiringFilter>,
 }
 
 impl ActiveCards {
@@ -253,6 +253,18 @@ impl GameState {
             }
             self.no_shooting_played_by = -1;
         }
+        let current_player_name = self.players[self.current_turn_player].name.clone();
+        let mut active_firing_filters =
+            std::mem::take(&mut self.active_cards.active_firing_filters);
+        active_firing_filters.retain(|filter| {
+            if filter.owner == current_player_name {
+                self.discard_pile.push(filter.card_played.clone());
+                return false;
+            } else {
+                return true;
+            }
+        });
+        self.active_cards.active_firing_filters = active_firing_filters;
         self.draw_card(self.current_turn_player);
         if self.active_cards.landmine_played_by != -1 && rand::thread_rng().gen_bool(0.5) {
             self.active_cards.landmine_played_by = -1;
@@ -292,7 +304,8 @@ impl GameState {
         let player_name = self.players[player_index].name.clone();
         let was_their_turn = self.current_turn_player == player_index;
 
-        let mut active_firing_filters = std::mem::take(&mut self.active_cards.active_firing_filters);
+        let mut active_firing_filters =
+            std::mem::take(&mut self.active_cards.active_firing_filters);
         active_firing_filters.retain(|filter| {
             if filter.owner == player_name {
                 self.discard_pile.push(filter.card_played.clone());

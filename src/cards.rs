@@ -24,14 +24,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_repair,
             count: 6,
         },
-        Card {
-            name: "Radar".to_string(),
-            id: "radar".to_string(),
-            card_type: CardType::Support,
-            can_be_played: can_play_radar,
-            play: stub_play,
-            count: 2,
-        },
+        // Card {
+        //     name: "Radar".to_string(),
+        //     id: "radar".to_string(),
+        //     card_type: CardType::Support,
+        //     can_be_played: can_play_radar,
+        //     play: stub_play,
+        //     count: 2,
+        // },
         Card {
             name: "Repair Kit".to_string(),
             id: "repair-kit".to_string(),
@@ -40,22 +40,22 @@ pub fn all_cards() -> Vec<Card> {
             play: play_repair_kit,
             count: 3,
         },
-        Card {
-            name: "Armor".to_string(),
-            id: "armor".to_string(),
-            card_type: CardType::Support,
-            can_be_played: can_never_play,
-            play: stub_play,
-            count: 5,
-        },
-        Card {
-            name: "Cold War".to_string(),
-            id: "cold-war".to_string(),
-            card_type: CardType::Support,
-            can_be_played: can_play_cold_war,
-            play: stub_play,
-            count: 3,
-        },
+        // Card {
+        //     name: "Armor".to_string(),
+        //     id: "armor".to_string(),
+        //     card_type: CardType::Support,
+        //     can_be_played: can_never_play,
+        //     play: stub_play,
+        //     count: 5,
+        // },
+        // Card {
+        //     name: "Cold War".to_string(),
+        //     id: "cold-war".to_string(),
+        //     card_type: CardType::Support,
+        //     can_be_played: can_play_cold_war,
+        //     play: stub_play,
+        //     count: 3,
+        // },
         Card {
             name: "Last Stand".to_string(),
             id: "last-stand".to_string(),
@@ -69,7 +69,7 @@ pub fn all_cards() -> Vec<Card> {
             id: "firing-filter".to_string(),
             card_type: CardType::Support,
             can_be_played: can_play_firing_filter,
-            play: stub_play,
+            play: play_firing_filter,
             count: 2,
         },
         Card {
@@ -88,14 +88,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_draw_2,
             count: 3,
         },
-        Card {
-            name: "Helpful Hand".to_string(),
-            id: "helpful-hand".to_string(),
-            card_type: CardType::Plus,
-            can_be_played: can_play_helpful_hand,
-            play: stub_play,
-            count: 1,
-        },
+        // Card {
+        //     name: "Helpful Hand".to_string(),
+        //     id: "helpful-hand".to_string(),
+        //     card_type: CardType::Plus,
+        //     can_be_played: can_play_helpful_hand,
+        //     play: stub_play,
+        //     count: 1,
+        // },
         Card {
             name: "Painful Draw".to_string(),
             id: "painful-draw".to_string(),
@@ -128,46 +128,46 @@ pub fn all_cards() -> Vec<Card> {
             play: play_stolen_parts,
             count: 5,
         },
-        Card {
-            name: "Distractor Missile".to_string(),
-            id: "distractor-missile".to_string(),
-            card_type: CardType::Shooting(ShootingType::Quick),
-            can_be_played: can_play_distractor_missile,
-            play: stub_play,
-            count: 8,
-        },
-        Card {
-            name: "Aimed Missile".to_string(),
-            id: "aimed-missile".to_string(),
-            card_type: CardType::Shooting(ShootingType::Calculated),
-            can_be_played: can_play_calculated_shooting,
-            play: stub_play,
-            count: 10,
-        },
-        Card {
-            name: "Locked On".to_string(),
-            id: "locked-on".to_string(),
-            card_type: CardType::Shooting(ShootingType::Calculated),
-            can_be_played: can_play_calculated_shooting,
-            play: stub_play,
-            count: 4,
-        },
-        Card {
-            name: "Multi Strike".to_string(),
-            id: "multi-strike".to_string(),
-            card_type: CardType::Shooting(ShootingType::Calculated),
-            can_be_played: can_play_calculated_shooting,
-            play: stub_play,
-            count: 1,
-        },
-        Card {
-            name: "Descision Missile".to_string(),
-            id: "descision-missile".to_string(),
-            card_type: CardType::Shooting(ShootingType::Calculated),
-            can_be_played: can_play_calculated_shooting,
-            play: stub_play,
-            count: 3,
-        },
+        // Card {
+        //     name: "Distractor Missile".to_string(),
+        //     id: "distractor-missile".to_string(),
+        //     card_type: CardType::Shooting(ShootingType::Quick),
+        //     can_be_played: can_play_distractor_missile,
+        //     play: stub_play,
+        //     count: 8,
+        // },
+        // Card {
+        //     name: "Aimed Missile".to_string(),
+        //     id: "aimed-missile".to_string(),
+        //     card_type: CardType::Shooting(ShootingType::Calculated),
+        //     can_be_played: can_play_calculated_shooting,
+        //     play: stub_play,
+        //     count: 10,
+        // },
+        // Card {
+        //     name: "Locked On".to_string(),
+        //     id: "locked-on".to_string(),
+        //     card_type: CardType::Shooting(ShootingType::Calculated),
+        //     can_be_played: can_play_calculated_shooting,
+        //     play: stub_play,
+        //     count: 4,
+        // },
+        // Card {
+        //     name: "Multi Strike".to_string(),
+        //     id: "multi-strike".to_string(),
+        //     card_type: CardType::Shooting(ShootingType::Calculated),
+        //     can_be_played: can_play_calculated_shooting,
+        //     play: stub_play,
+        //     count: 1,
+        // },
+        // Card {
+        //     name: "Descision Missile".to_string(),
+        //     id: "descision-missile".to_string(),
+        //     card_type: CardType::Shooting(ShootingType::Calculated),
+        //     can_be_played: can_play_calculated_shooting,
+        //     play: stub_play,
+        //     count: 3,
+        // },
         Card {
             name: "Big Bomb".to_string(),
             id: "big-bomb".to_string(),
@@ -216,22 +216,22 @@ pub fn all_cards() -> Vec<Card> {
             play: play_more_ammo,
             count: 2,
         },
-        Card {
-            name: "New Model".to_string(),
-            id: "new-model".to_string(),
-            card_type: CardType::Event,
-            can_be_played: can_play_new_model,
-            play: stub_play,
-            count: 2,
-        },
-        Card {
-            name: "Airstrike".to_string(),
-            id: "airstrike".to_string(),
-            card_type: CardType::Event,
-            can_be_played: can_play_airstrike,
-            play: stub_play,
-            count: 1,
-        },
+        // Card {
+        //     name: "New Model".to_string(),
+        //     id: "new-model".to_string(),
+        //     card_type: CardType::Event,
+        //     can_be_played: can_play_new_model,
+        //     play: stub_play,
+        //     count: 2,
+        // },
+        // Card {
+        //     name: "Airstrike".to_string(),
+        //     id: "airstrike".to_string(),
+        //     card_type: CardType::Event,
+        //     can_be_played: can_play_airstrike,
+        //     play: stub_play,
+        //     count: 1,
+        // },
         Card {
             name: "Spray".to_string(),
             id: "spray".to_string(),
@@ -256,14 +256,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_health_hazard,
             count: 2,
         },
-        Card {
-            name: "Recycle".to_string(),
-            id: "recycle".to_string(),
-            card_type: CardType::Event,
-            can_be_played: can_play_event,
-            play: stub_play,
-            count: 1,
-        },
+        // Card {
+        //     name: "Recycle".to_string(),
+        //     id: "recycle".to_string(),
+        //     card_type: CardType::Event,
+        //     can_be_played: can_play_event,
+        //     play: stub_play,
+        //     count: 1,
+        // },
     ];
 
     let mut cards: Vec<Card> = Vec::new();
@@ -595,4 +595,21 @@ fn play_stolen_parts(
 fn play_dent(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
     let target = header_value(req, "target").unwrap();
     game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 1);
+}
+fn play_firing_filter(card: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
+    let Some(filter_type_str) = header_value(req, "firing_filter_type") else {
+        return;
+    };
+
+    let Some(filter_type) = parse_shooting_type(&filter_type_str) else {
+        return;
+    };
+
+    let filter = ActiveFiringFilter {
+        owner: game_state.players[player_index].name.clone(),
+        filter_type,
+        card_played:card.clone(),
+    };
+
+    game_state.active_cards.active_firing_filters.push(filter);
 }
