@@ -15,7 +15,8 @@ function playCard() {
     let actions = [];
     if (deckCard) {
         let isShooting = typeof deckCard.card_type === 'object' && deckCard.card_type !== null && deckCard.card_type.hasOwnProperty('Shooting');
-        if (isShooting || deckCard.id === 'airstrike' || deckCard.id === 'steal') {
+        let isCalculatedShooting = isShooting && deckCard.card_type.Shooting === 'Calculated';
+        if (((isShooting && deckCard.id !== 'landmine') && !isCalculatedShooting) || deckCard.id === 'airstrike' || deckCard.id === 'steal'||deckCard.id === 'health-hazard') {
             actions.push('target');
         }
         if (deckCard.id === 'firing-filter') {
