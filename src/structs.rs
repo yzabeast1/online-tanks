@@ -5,6 +5,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerSettings {
+    pub bind_ip: String,
+    pub port: u16,
+    pub connect_link: String,
+}
+
+impl Default for ServerSettings {
+    fn default() -> Self {
+        Self {
+            bind_ip: "0.0.0.0".to_string(),
+            port: 443,
+            connect_link: "localhost".to_string(),
+        }
+    }
+}
+
 pub fn default_can_be_played() -> fn(&Card, &GameState, &Request<Body>) -> bool {
     crate::cards::can_never_play
 }

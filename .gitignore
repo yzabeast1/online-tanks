@@ -4,3 +4,4 @@ certificate.crt
 ca_bundle.crt
 server_state.json
 Cargo.lock
+server_settings.json

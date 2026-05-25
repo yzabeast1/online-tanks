@@ -51,6 +51,39 @@ async fn serve_image(path: &str) -> Result<Response<Body>, Infallible> {
     serve_file(path, image_content_type(path)).await
 }
 
+async fn serve_lobby_js(settings: &ServerSettings) -> Result<Response<Body>, Infallible> {
+    let path = format!("{}/lobby.js", WEBSITE_DIR);
+    match tokio::fs::read_to_string(&path).await {
+        Ok(contents) => {
+            let serverip = if settings.port == 443 {
+                settings.connect_link.clone()
+            } else {
+                format!("{}:{}", settings.connect_link, settings.port)
+            };
+            let contents = contents
+                .lines()
+                .map(|line| {
+                    if line.trim_start().starts_with("var serverip") {
+                        format!("var serverip = '{}'", serverip)
+                    } else {
+                        line.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "application/javascript")
+                .body(Body::from(contents))
+                .unwrap())
+        }
+        Err(_) => Ok(Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Not found"))
+            .unwrap()),
+    }
+}
+
 fn header_value(req: &Request<Body>, name: &str) -> Option<String> {
     req.headers()
         .get(name)
@@ -114,6 +147,31 @@ fn card_target_damage(card: &Card) -> Option<usize> {
 
 fn damage_amount(before: isize, after: isize) -> Option<usize> {
     (before > after).then_some((before - after) as usize)
+}
+
+fn load_server_settings(settings_file_path: &str) -> ServerSettings {
+    if std::path::Path::new(settings_file_path).exists() {
+        println!("Loading server settings from {}", settings_file_path);
+        let data = std::fs::read_to_string(settings_file_path)
+            .expect("Failed to read server_settings.json");
+        serde_json::from_str(&data).expect("Failed to parse server_settings.json")
+    } else {
+        let settings = ServerSettings::default();
+        let json = serde_json::to_string_pretty(&settings)
+            .expect("Failed to serialize default server settings");
+        std::fs::write(settings_file_path, json)
+            .expect("Failed to create default server_settings.json");
+        println!("Created default server settings at {}", settings_file_path);
+        settings
+    }
+}
+
+fn server_connect_url(settings: &ServerSettings) -> String {
+    if settings.port == 443 {
+        format!("https://{}", settings.connect_link)
+    } else {
+        format!("https://{}:{}", settings.connect_link, settings.port)
+    }
 }
 
 fn format_discarded_cards(discarded_cards: &[Card]) -> String {
@@ -684,6 +742,7 @@ fn load_private_key(path: &str) -> PrivateKey {
 async fn handle_request(
     req: Request<Body>,
     state: Arc<ServerState>,
+    server_settings: ServerSettings,
 ) -> Result<Response<Body>, Infallible> {
     let path = req.uri().path().to_string();
     match (req.method(), path.as_str()) {
@@ -700,13 +759,13 @@ async fn handle_request(
             serve_image(&p).await
         }
         (&Method::GET, "/gameScreen.js")
-        | (&Method::GET, "/lobby.js")
         | (&Method::GET, "/networkFunctions.js")
         | (&Method::GET, "/playCard.js")
         | (&Method::GET, "/chat.js") => {
             let p = format!("{}/{}", WEBSITE_DIR, &path[1..]);
             serve_file(&p, "application/javascript").await
         }
+        (&Method::GET, "/lobby.js") => serve_lobby_js(&server_settings).await,
         (&Method::GET, "/checkOnline") => Ok(text_response(StatusCode::OK, "Online")),
         (&Method::POST, "/createGame") => {
             let username = header_value(&req, "username");
@@ -1065,6 +1124,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .expect("bad certificates/private key");
 
     let acceptor = TlsAcceptor::from(Arc::new(config));
+
+    let server_settings_path = "server_settings.json";
+    let server_settings = load_server_settings(server_settings_path);
     
     let state_file_path = "server_state.json";
     let state = if std::path::Path::new(state_file_path).exists() {
@@ -1103,21 +1165,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         std::process::exit(0);
     });
 
-    let addr: SocketAddr = ([0, 0, 0, 0], 8443).into();
+    let bind_ip: std::net::IpAddr = server_settings
+        .bind_ip
+        .parse()
+        .expect("bind_ip in server_settings.json must be a valid IP address");
+    let addr = SocketAddr::new(bind_ip, server_settings.port);
     let listener = TcpListener::bind(addr).await?;
 
-    println!("HTTPS server listening on https://0.0.0.0:8443");
+    println!("HTTPS server listening on {}", server_connect_url(&server_settings));
 
     loop {
         let (stream, peer_addr) = listener.accept().await?;
         let acceptor = acceptor.clone();
         let state = state.clone();
+        let server_settings = server_settings.clone();
 
         tokio::spawn(async move {
             let peer = peer_addr;
             match acceptor.accept(stream).await {
                 Ok(tls_stream) => {
-                    let service = service_fn(move |req| handle_request(req, state.clone()));
+                    let service = service_fn(move |req| {
+                        handle_request(req, state.clone(), server_settings.clone())
+                    });
                     if let Err(err) = hyper::server::conn::Http::new()
                         .serve_connection(tls_stream, service)
                         .await
