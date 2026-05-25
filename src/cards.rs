@@ -575,6 +575,7 @@ fn play_lottery(_: &Card, game_state: &mut GameState, player_index: usize, _: &R
     game_state.draw_card(player_index);
     game_state.draw_card(player_index);
     game_state.draw_card(player_index);
+    game_state.next_turn();
 }
 fn play_new_model(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
     let Some(first_discard_index) =
@@ -620,6 +621,7 @@ fn play_spray(_: &Card, game_state: &mut GameState, player_index: usize, _: &Req
 fn play_nuke(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
     let target = header_value(req, "target").unwrap();
     game_state.player_by_name_mut(&target).unwrap().health = 2;
+    game_state.next_turn();
 }
 fn play_big_bomb(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
     let target = header_value(req, "target").unwrap();
