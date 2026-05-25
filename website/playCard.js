@@ -1,4 +1,41 @@
 var cardSelected;
+function isShootingCard(card) {
+    return card && typeof card.card_type === 'object' && card.card_type !== null && card.card_type.hasOwnProperty('Shooting');
+}
+
+function shootingType(card) {
+    return isShootingCard(card) ? card.card_type.Shooting : null;
+}
+
+function cardNeedsTarget(card) {
+    if (!card) return false;
+    const type = shootingType(card);
+    const isCalculatedShooting = type === 'Calculated';
+    return ((type && card.id !== 'landmine') && !isCalculatedShooting)
+        || card.id === 'airstrike'
+        || card.id === 'steal'
+        || card.id === 'health-hazard';
+}
+
+function firingFilterBlocksTarget(card, playerName) {
+    const type = shootingType(card);
+    if (!type) return false;
+
+    return gameData.active_cards.active_firing_filters.some(filter =>
+        filter.owner === playerName && filter.filter_type === type
+    );
+}
+
+function validTargetsForCard(card) {
+    return gameData.players.filter(player =>
+        player.name !== username && !firingFilterBlocksTarget(card, player.name)
+    );
+}
+
+function hasValidTargetsForCard(card) {
+    return validTargetsForCard(card).length > 0;
+}
+
 function playCard() {
     var card = cardSelected
     if (!card) {
@@ -10,13 +47,15 @@ function playCard() {
     }
     cardSelected = card
     document.getElementById('playCardBtn').onclick = sendPlayedCardToServer
+    document.getElementById('playCardBtn').style.display = 'block'
     
     let deckCard = deck.find(item => item.id === card);
     let actions = [];
     if (deckCard) {
-        let isShooting = typeof deckCard.card_type === 'object' && deckCard.card_type !== null && deckCard.card_type.hasOwnProperty('Shooting');
-        let isCalculatedShooting = isShooting && deckCard.card_type.Shooting === 'Calculated';
-        if (((isShooting && deckCard.id !== 'landmine') && !isCalculatedShooting) || deckCard.id === 'airstrike' || deckCard.id === 'steal'||deckCard.id === 'health-hazard') {
+        if (cardNeedsTarget(deckCard) && !hasValidTargetsForCard(deckCard)) {
+            document.getElementById('playCardBtn').style.display = 'none'
+        }
+        if (cardNeedsTarget(deckCard)) {
             actions.push('target');
         }
         if (deckCard.id === 'new-model') {
@@ -91,7 +130,7 @@ function createFiringFilterTypeDropdown() {
     popupContent.appendChild(dropdown);
     popupContent.appendChild(document.createElement('br'))
 }
-function createPlayerSelectPopup() {
+function createPlayerSelectPopup(card = deck.find(item => item.id === cardSelected)) {
     const popupContent = document.getElementById('popupContent');
 
     const label = document.createElement('label');
@@ -102,13 +141,11 @@ function createPlayerSelectPopup() {
     dropdown.id = 'playerDropdown';
     dropdown.innerHTML = '';  // Clear any existing options
 
-    gameData.players.forEach(player => {
-        if (player.name !== username) {  // Exclude current player's name
-            const option = document.createElement('option');
-            option.value = player.name;
-            option.text = player.name;
-            dropdown.appendChild(option);
-        }
+    validTargetsForCard(card).forEach(player => {
+        const option = document.createElement('option');
+        option.value = player.name;
+        option.text = player.name;
+        dropdown.appendChild(option);
     });
 
     popupContent.appendChild(dropdown);

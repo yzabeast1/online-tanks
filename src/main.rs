@@ -372,27 +372,27 @@ fn log_play_event(
     game.push_server_chat_message(message);
 }
 
-fn discard_blocking_firing_filter(
-    game: &mut GameState,
+fn blocking_firing_filter(
+    game: &GameState,
     card: &Card,
     req: &Request<Body>,
-) -> Option<Card> {
+) -> Option<(String, String)> {
     let Some(filter_type) = card.card_type.shooting_type() else {
         return None;
     };
     let Some(target) = header_value(req, "target") else {
         return None;
     };
-    let Some(filter_index) = game
+    let Some(active_filter) = game
         .active_cards
         .active_firing_filters
         .iter()
-        .position(|filter| filter.owner == target && filter.filter_type == filter_type)
+        .find(|filter| filter.owner == target && filter.filter_type == filter_type)
     else {
         return None;
     };
 
-    Some(game.active_cards.active_firing_filters[filter_index].card_played.clone())
+    Some((active_filter.owner.clone(), active_filter.card_played.name.clone()))
 }
 
 fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response<Body> {
@@ -447,25 +447,11 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
 
     let card = game.players[player_index].hand[card_index].clone();
     if !(card.can_be_played)(&card, game, req) {
-        if let Some(discarded_filter) = discard_blocking_firing_filter(game, &card, req) {
-            log_play_event(
-                game,
-                &joincode,
-                &username,
-                &card,
-                req,
-                &hand_before,
-                "blocked",
-                &[],
-                Some(&discarded_filter),
-                false,
-                current_player_health_before,
-                current_player_health_before,
-                target_name.clone(),
-                target_health_before,
-                target_hand_before.as_deref(),
-                target_hand_before.as_deref(),
-            );
+        if let Some((filter_owner, blocking_filter_name)) = blocking_firing_filter(game, &card, req) {
+            game.push_server_chat_message(format!(
+                "{}'s {} blocked {}'s {}",
+                filter_owner, blocking_filter_name, username, card.name
+            ));
             return json_response(
                 StatusCode::OK,
                 serde_json::to_string(&serde_json::json!({"status": "blocked"})).unwrap(),

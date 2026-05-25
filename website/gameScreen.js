@@ -190,8 +190,15 @@ function openModal(imageSrc, card) {
     
     let maxShooting = 1 + renderedData.turn_state.more_ammo_played;
     let shootingAllowed = renderedData.no_shooting_played_by === -1 || renderedData.players[renderedData.no_shooting_played_by].name === username;
+    let isMyTurn = renderedData.players[renderedData.current_turn_player]?.name === username;
 
-    if (isShooting && (!shootingAllowed || renderedData.turn_state.shooting_card_played >= maxShooting)) {
+    if (!isMyTurn) {
+        document.getElementById('play-card').style.display = 'none';
+    }
+    else if (isShooting && cardNeedsTarget(card) && !hasValidTargetsForCard(card)) {
+        document.getElementById('play-card').style.display = 'none';
+    }
+    else if (isShooting && (!shootingAllowed || renderedData.turn_state.shooting_card_played >= maxShooting)) {
         document.getElementById('play-card').style.display = 'none';
     }
     else if (isEvent && renderedData.turn_state.event_card_played) {
@@ -281,7 +288,9 @@ function activateCalculatedShootingPopup(cardid) {
     const popupContent = document.getElementById('popupContent');
     popupContent.innerHTML = '';  // Clear previous popup content
 
-    createPlayerSelectPopup();
+    const card = deck.find(item => item.id === cardid);
+    createPlayerSelectPopup(card);
+    document.getElementById('playCardBtn').style.display = hasValidTargetsForCard(card) ? 'block' : 'none';
 
     showPopup();  // Show the popup after generating content
 
