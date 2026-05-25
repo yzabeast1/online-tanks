@@ -216,14 +216,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_more_ammo,
             count: 2,
         },
-        // Card {
-        //     name: "New Model".to_string(),
-        //     id: "new-model".to_string(),
-        //     card_type: CardType::Event,
-        //     can_be_played: can_play_new_model,
-        //     play: stub_play,
-        //     count: 2,
-        // },
+        Card {
+            name: "New Model".to_string(),
+            id: "new-model".to_string(),
+            card_type: CardType::Event,
+            can_be_played: can_play_new_model,
+            play: play_new_model,
+            count: 2,
+        },
         // Card {
         //     name: "Airstrike".to_string(),
         //     id: "airstrike".to_string(),
@@ -454,20 +454,51 @@ fn can_play_lottery(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool
     return true;
 }
 
-fn can_play_new_model(_card: &Card, game_state: &GameState, _req: &Request<Body>) -> bool {
+fn selected_hand_index(req: &Request<Body>, name: &str, hand: &[Card]) -> Option<usize> {
+    let value = header_value(req, name)?;
+    if let Some((index, card_id)) = value.split_once(':') {
+        let index = index.parse::<usize>().ok()?;
+        if hand.get(index).is_some_and(|card| card.id == card_id) {
+            return Some(index);
+        }
+        if index > 0 && hand.get(index - 1).is_some_and(|card| card.id == card_id) {
+            return Some(index - 1);
+        }
+
+        return hand.iter().position(|card| card.id == card_id);
+    }
+
+    if let Ok(index) = value.parse::<usize>() {
+        return (index < hand.len()).then_some(index);
+    }
+
+    hand.iter().position(|card| card.id == value)
+}
+
+fn can_play_new_model(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
     let current_player = &game_state.players[game_state.current_turn_player];
+    let first_discard_index = selected_hand_index(req, "discardcard", &current_player.hand);
+    let second_discard_index = selected_hand_index(req, "discardcardtwo", &current_player.hand);
 
-    let shooting_cards_count = current_player
-        .hand
-        .iter()
-        .filter(|card| card.card_type.is_shooting())
-        .count();
+    let (Some(first_discard_index), Some(second_discard_index)) =
+        (first_discard_index, second_discard_index)
+    else {
+        return false;
+    };
 
-    if shooting_cards_count < 2 {
+    if first_discard_index == second_discard_index {
         return false;
     }
 
-    return can_play_event(_card, game_state, _req);
+    if !current_player.hand[first_discard_index]
+        .card_type
+        .is_shooting()
+        || !current_player.hand[second_discard_index].card_type.is_shooting()
+    {
+        return false;
+    }
+
+    return can_play_event(_card, game_state, req);
 }
 
 fn can_play_no_shooting(_card: &Card, game_state: &GameState, _req: &Request<Body>) -> bool {
@@ -544,6 +575,28 @@ fn play_lottery(_: &Card, game_state: &mut GameState, player_index: usize, _: &R
     game_state.draw_card(player_index);
     game_state.draw_card(player_index);
     game_state.draw_card(player_index);
+}
+fn play_new_model(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
+    let Some(first_discard_index) =
+        selected_hand_index(req, "discardcard", &game_state.players[player_index].hand)
+    else {
+        return;
+    };
+    let Some(second_discard_index) = selected_hand_index(
+        req,
+        "discardcardtwo",
+        &game_state.players[player_index].hand,
+    ) else {
+        return;
+    };
+
+    let mut discard_indices = [first_discard_index, second_discard_index];
+    discard_indices.sort_unstable_by(|left, right| right.cmp(left));
+    for discard_index in discard_indices {
+        let discarded_card = game_state.players[player_index].hand.remove(discard_index);
+        game_state.discard_pile.push(discarded_card);
+    }
+    game_state.players[player_index].health = 10;
 }
 fn play_painful_draw(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
     game_state.draw_card(player_index);
@@ -665,7 +718,7 @@ fn locked_on_when_done(
     };
 
     game_state.damage_player(target_index, 5);
-    game_state.push_server_chat_message(format!("Aimed Missile hit {} dealing 3 damage", target));
+    game_state.push_server_chat_message(format!("Locked On hit {} dealing 5 damage", target));
 }
 
 fn play_locked_on(card: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {

@@ -19,6 +19,10 @@ function playCard() {
         if (((isShooting && deckCard.id !== 'landmine') && !isCalculatedShooting) || deckCard.id === 'airstrike' || deckCard.id === 'steal'||deckCard.id === 'health-hazard') {
             actions.push('target');
         }
+        if (deckCard.id === 'new-model') {
+            actions.push('discardcard');
+            actions.push('discardcardtwo');
+        }
         if (deckCard.id === 'firing-filter') {
             actions.push('firing_filter_type');
         }
@@ -125,7 +129,7 @@ function createDiscardDropdown(discardAction) {
         myPlayer.hand.forEach((card, index) => {
             if (card && card.id != cardSelected) {
                 const option = document.createElement('option');
-                option.value = index;
+                option.value = `${index}:${card.id}`;
                 option.text = card.name;
                 dropdown.appendChild(option);
             }
