@@ -80,9 +80,9 @@ function renderGame() {
                     document.getElementById('end-turn').style.display = 'none'
                     document.getElementById('play-card').style.display = 'none'
                 }
-                if (gameData.no_shooting_played_by !== -1) {
+                if (gameData.active_cards.no_shooting_played_by !== -1) {
                     document.getElementById('no-shooting').style.display = 'block'
-                    document.getElementById('no-shooting').innerHTML = "No shooting was played by " + gameData.players[gameData.no_shooting_played_by].name
+                    document.getElementById('no-shooting').innerHTML = "No shooting was played by " + gameData.players[gameData.active_cards.no_shooting_played_by].name
                 }
                 else document.getElementById('no-shooting').style.display = 'none'
                 if (gameData.active_cards.landmine_played_by !== -1) {
@@ -189,7 +189,7 @@ function openModal(imageSrc, card) {
     let isEvent = card.card_type === 'Event';
     
     let maxShooting = 1 + renderedData.turn_state.more_ammo_played;
-    let shootingAllowed = renderedData.no_shooting_played_by === -1 || renderedData.players[renderedData.no_shooting_played_by].name === username;
+    let shootingAllowed = renderedData.active_cards.no_shooting_played_by === -1 || renderedData.players[renderedData.active_cards.no_shooting_played_by].name === username;
     let isMyTurn = renderedData.players[renderedData.current_turn_player]?.name === username;
 
     if (!isMyTurn) {

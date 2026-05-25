@@ -404,8 +404,8 @@ fn can_play_boom_shooting(_: &Card, game_state: &GameState, req: &Request<Body>)
 }
 
 fn can_play_shooting(game_state: &GameState) -> bool {
-    if game_state.no_shooting_played_by != -1
-        && game_state.current_turn_player as isize != game_state.no_shooting_played_by
+    if game_state.active_cards.no_shooting_played_by != -1
+        && game_state.current_turn_player as isize != game_state.active_cards.no_shooting_played_by
     {
         return false;
     }
@@ -553,7 +553,7 @@ fn play_no_shooting(
     player_index: usize,
     _: &Request<Body>,
 ) {
-    game_state.no_shooting_played_by = player_index as isize;
+    game_state.active_cards.no_shooting_played_by = player_index as isize;
     game_state.active_cards.no_shooting_card = Some(card.clone());
     game_state.turn_state.no_shooting_played = true;
 }

@@ -24,6 +24,10 @@ pub fn default_active_card() -> Card {
         .expect("card list should not be empty")
 }
 
+pub fn default_inactive_player_index() -> isize {
+    -1
+}
+
 use crate::cards::all_cards;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum CardType {
@@ -130,6 +134,8 @@ pub struct ActiveFiringFilter {
 pub struct ActiveCards {
     pub landmine_played_by: isize,
     pub landmine_card: Option<Card>,
+    #[serde(default = "crate::structs::default_inactive_player_index")]
+    pub no_shooting_played_by: isize,
     pub no_shooting_card: Option<Card>,
     pub active_calculated_shootings: Vec<ActiveCalculatedShooting>,
     pub active_firing_filters: Vec<ActiveFiringFilter>,
@@ -140,6 +146,7 @@ impl ActiveCards {
         return ActiveCards {
             landmine_played_by: -1,
             landmine_card: None,
+            no_shooting_played_by: -1,
             no_shooting_card: None,
             active_calculated_shootings: Vec::new(),
             active_firing_filters: Vec::new(),
@@ -154,7 +161,6 @@ pub struct GameState {
     pub current_turn_player: usize,
     pub draw_pile: Vec<Card>,
     pub discard_pile: Vec<Card>,
-    pub no_shooting_played_by: isize,
     pub turn_state: TurnState,
     pub active_cards: ActiveCards,
     pub chat_messages: Vec<ChatMessage>,
@@ -220,7 +226,6 @@ impl GameState {
             current_turn_player: 0,
             draw_pile: Vec::new(),
             discard_pile: Vec::new(),
-            no_shooting_played_by: -1,
             turn_state: TurnState::new(),
             active_cards: ActiveCards::new(),
             chat_messages: Vec::new(),
@@ -255,12 +260,12 @@ impl GameState {
             }
         }
         self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
-        if self.no_shooting_played_by == self.current_turn_player as isize {
+        if self.active_cards.no_shooting_played_by == self.current_turn_player as isize {
             if let Some(card) = self.active_cards.no_shooting_card.take() {
                 self.discard_pile.push(card);
                 self.push_server_chat_message("No Shooting went out of play".to_string());
             }
-            self.no_shooting_played_by = -1;
+            self.active_cards.no_shooting_played_by = -1;
         }
         let current_player_name = self.players[self.current_turn_player].name.clone();
         let mut active_firing_filters =
@@ -349,8 +354,8 @@ impl GameState {
         });
         self.active_cards.active_calculated_shootings = active_calculated_shootings;
 
-        if self.no_shooting_played_by == player_index as isize {
-            self.no_shooting_played_by = if self.players.len() > 1 {
+        if self.active_cards.no_shooting_played_by == player_index as isize {
+            self.active_cards.no_shooting_played_by = if self.players.len() > 1 {
                 ((player_index + 1) % self.players.len()) as isize
             } else {
                 -1
@@ -363,12 +368,12 @@ impl GameState {
 
         if self.players.is_empty() {
             self.current_turn_player = 0;
-            self.no_shooting_played_by = -1;
+            self.active_cards.no_shooting_played_by = -1;
             return true;
         }
 
-        if self.no_shooting_played_by > player_index as isize {
-            self.no_shooting_played_by -= 1;
+        if self.active_cards.no_shooting_played_by > player_index as isize {
+            self.active_cards.no_shooting_played_by -= 1;
         }
         if self.current_turn_player > player_index {
             self.current_turn_player -= 1;
