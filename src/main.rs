@@ -512,7 +512,10 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
         discarded_cards.push(card.clone());
     }
 
-    let current_player_health_after = game.players[player_index].health;
+    let current_player_health_after = game
+        .player_by_name(&username)
+        .map(|player| player.health)
+        .unwrap_or(0);
 
     let target_hand_after = target_name
         .as_ref()
