@@ -12,7 +12,7 @@ pub fn can_always_play(_: &Card, _: &GameState, _: &Request<Body>) -> bool {
     return true;
 }
 
-pub fn stub_when_done() {}
+pub fn stub_when_done(_: &mut GameState, _: &ActiveCalculatedShooting, _: &Request<Body>) {}
 
 pub fn all_cards() -> Vec<Card> {
     let card_templates = vec![
@@ -136,22 +136,22 @@ pub fn all_cards() -> Vec<Card> {
         //     play: stub_play,
         //     count: 8,
         // },
-        // Card {
-        //     name: "Aimed Missile".to_string(),
-        //     id: "aimed-missile".to_string(),
-        //     card_type: CardType::Shooting(ShootingType::Calculated),
-        //     can_be_played: can_play_calculated_shooting,
-        //     play: stub_play,
-        //     count: 10,
-        // },
-        // Card {
-        //     name: "Locked On".to_string(),
-        //     id: "locked-on".to_string(),
-        //     card_type: CardType::Shooting(ShootingType::Calculated),
-        //     can_be_played: can_play_calculated_shooting,
-        //     play: stub_play,
-        //     count: 4,
-        // },
+        Card {
+            name: "Aimed Missile".to_string(),
+            id: "aimed-missile".to_string(),
+            card_type: CardType::Shooting(ShootingType::Calculated),
+            can_be_played: can_play_calculated_shooting,
+            play: play_aimed_missile,
+            count: 10,
+        },
+        Card {
+            name: "Locked On".to_string(),
+            id: "locked-on".to_string(),
+            card_type: CardType::Shooting(ShootingType::Calculated),
+            can_be_played: can_play_calculated_shooting,
+            play: play_locked_on,
+            count: 4,
+        },
         // Card {
         //     name: "Multi Strike".to_string(),
         //     id: "multi-strike".to_string(),
@@ -596,7 +596,12 @@ fn play_dent(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>
     let target = header_value(req, "target").unwrap();
     game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 1);
 }
-fn play_firing_filter(card: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
+fn play_firing_filter(
+    card: &Card,
+    game_state: &mut GameState,
+    player_index: usize,
+    req: &Request<Body>,
+) {
     let Some(filter_type_str) = header_value(req, "firing_filter_type") else {
         return;
     };
@@ -608,8 +613,71 @@ fn play_firing_filter(card: &Card, game_state: &mut GameState, player_index: usi
     let filter = ActiveFiringFilter {
         owner: game_state.players[player_index].name.clone(),
         filter_type,
-        card_played:card.clone(),
+        card_played: card.clone(),
     };
 
     game_state.active_cards.active_firing_filters.push(filter);
+}
+fn aimed_missile_when_done(
+    game_state: &mut GameState,
+    _: &ActiveCalculatedShooting,
+    req: &Request<Body>,
+) {
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_index) = game_state.player_index_from_name(&target) else {
+        return;
+    };
+
+    game_state.damage_player(target_index, 3);
+    game_state.push_server_chat_message(format!("Aimed Missile hit {} dealing 3 damage", target));
+}
+
+fn play_aimed_missile(
+    card: &Card,
+    game_state: &mut GameState,
+    player_index: usize,
+    _: &Request<Body>,
+) {
+    let calc_shot = ActiveCalculatedShooting {
+        owner: game_state.players[player_index].name.clone(),
+        turns_remaining: 2,
+        when_done: locked_on_when_done,
+        card_played: card.clone(),
+    };
+
+    game_state
+        .active_cards
+        .active_calculated_shootings
+        .push(calc_shot);
+}
+fn locked_on_when_done(
+    game_state: &mut GameState,
+    _: &ActiveCalculatedShooting,
+    req: &Request<Body>,
+) {
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_index) = game_state.player_index_from_name(&target) else {
+        return;
+    };
+
+    game_state.damage_player(target_index, 5);
+    game_state.push_server_chat_message(format!("Aimed Missile hit {} dealing 3 damage", target));
+}
+
+fn play_locked_on(card: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
+    let calc_shot = ActiveCalculatedShooting {
+        owner: game_state.players[player_index].name.clone(),
+        turns_remaining: 3,
+        when_done: aimed_missile_when_done,
+        card_played: card.clone(),
+    };
+
+    game_state
+        .active_cards
+        .active_calculated_shootings
+        .push(calc_shot);
 }

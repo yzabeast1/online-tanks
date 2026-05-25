@@ -13,7 +13,7 @@ pub fn default_play() -> fn(&Card, &mut GameState, usize, &Request<Body>) {
     crate::cards::stub_play
 }
 
-pub fn default_when_done() -> fn() {
+pub fn default_when_done() -> fn(&mut GameState, &ActiveCalculatedShooting, &Request<Body>) {
     crate::cards::stub_when_done
 }
 
@@ -115,7 +115,7 @@ pub struct ActiveCalculatedShooting {
     pub owner: String,
     pub turns_remaining: usize,
     #[serde(skip, default = "crate::structs::default_when_done")]
-    pub when_done: fn(),
+    pub when_done: fn(&mut GameState, &ActiveCalculatedShooting, &Request<Body>),
     pub card_played: Card,
 }
 #[derive(Debug, Serialize, Deserialize)]

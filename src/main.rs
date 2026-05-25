@@ -580,6 +580,7 @@ fn activate_calculated_shooting_response(
         .active_cards
         .active_calculated_shootings
         .remove(active_index);
+    (active.when_done)(game, &active, req);
     game.discard_pile.push(active.card_played);
 
     json_response(
