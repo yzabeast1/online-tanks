@@ -339,6 +339,13 @@ impl GameState {
         }
     }
 
+    pub fn heal_player(&mut self, player_index: usize, heal_ammount: isize) {
+        self.players[player_index].health += heal_ammount;
+        if self.players[player_index].health > 10 {
+            self.players[player_index].health = 10;
+        }
+    }
+
     pub fn remove_player(&mut self, player_index: usize, advance_turn_if_current: bool) -> bool {
         if player_index >= self.players.len() {
             return self.players.is_empty();

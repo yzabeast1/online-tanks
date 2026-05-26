@@ -538,10 +538,10 @@ fn can_play_steal(_card: &Card, game_state: &GameState, req: &Request<Body>) -> 
 }
 
 fn play_repair(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
-    game_state.players[player_index].health += 1;
+    game_state.heal_player(player_index, 1);
 }
 fn play_repair_kit(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
-    game_state.players[player_index].health += 3;
+    game_state.heal_player(player_index, 3);
 }
 fn play_landmine(card: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
     game_state.active_cards.landmine_played_by = player_index as isize;
@@ -613,7 +613,7 @@ fn play_health_hazard(_: &Card, game_state: &mut GameState, _: usize, req: &Requ
     game_state.player_by_name_mut(&target).unwrap().health = thread_rng().gen_range(1..=10);
 }
 fn play_spray(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
-    game_state.players[player_index].health += 1;
+    game_state.heal_player(player_index, 1);
     for i in 1..game_state.players.len() {
         game_state.damage_player(i, 3);
     }
@@ -645,7 +645,7 @@ fn play_stolen_parts(
 ) {
     let target = header_value(req, "target").unwrap();
     game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 2);
-    game_state.players[player_index].health += 1;
+    game_state.heal_player(player_index, 1);
 }
 fn play_dent(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
     let target = header_value(req, "target").unwrap();
