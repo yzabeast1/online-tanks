@@ -88,14 +88,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_draw_2,
             count: 3,
         },
-        // Card {
-        //     name: "Helpful Hand".to_string(),
-        //     id: "helpful-hand".to_string(),
-        //     card_type: CardType::Plus,
-        //     can_be_played: can_play_helpful_hand,
-        //     play: stub_play,
-        //     count: 1,
-        // },
+        Card {
+            name: "Helpful Hand".to_string(),
+            id: "helpful-hand".to_string(),
+            card_type: CardType::Plus,
+            can_be_played: can_play_helpful_hand,
+            play: play_helpful_hand,
+            count: 1,
+        },
         Card {
             name: "Painful Draw".to_string(),
             id: "painful-draw".to_string(),
@@ -493,7 +493,9 @@ fn can_play_new_model(_card: &Card, game_state: &GameState, req: &Request<Body>)
     if !current_player.hand[first_discard_index]
         .card_type
         .is_shooting()
-        || !current_player.hand[second_discard_index].card_type.is_shooting()
+        || !current_player.hand[second_discard_index]
+            .card_type
+            .is_shooting()
     {
         return false;
     }
@@ -512,7 +514,7 @@ fn can_play_helpful_hand(_card: &Card, game_state: &GameState, _req: &Request<Bo
     if game_state.players[game_state.current_turn_player]
         .hand
         .len()
-        > 1
+        < 1
     {
         return false;
     }
@@ -735,4 +737,21 @@ fn play_locked_on(card: &Card, game_state: &mut GameState, player_index: usize, 
         .active_cards
         .active_calculated_shootings
         .push(calc_shot);
+}
+fn play_helpful_hand(
+    _: &Card,
+    game_state: &mut GameState,
+    player_index: usize,
+    req: &Request<Body>,
+) {
+    let Some(discard_index) =
+        selected_hand_index(req, "discardcard", &game_state.players[player_index].hand)
+    else {
+        return;
+    };
+    let discarded_card = game_state.players[player_index].hand.remove(discard_index);
+    game_state.discard_pile.push(discarded_card);
+    game_state.draw_card(player_index);
+    game_state.draw_card(player_index);
+    game_state.draw_card(player_index);
 }

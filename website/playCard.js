@@ -65,6 +65,9 @@ function playCard() {
         if (deckCard.id === 'firing-filter') {
             actions.push('firing_filter_type');
         }
+        if(deckCard.id === 'helpful-hand') {
+            actions.push('discardcard');
+        }
     }
     triggerActions(actions);
 }
