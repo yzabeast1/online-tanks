@@ -283,21 +283,80 @@ function activateCalculatedShootingPopup(cardid) {
     popupContent.innerHTML = '';  // Clear previous popup content
 
     const card = deck.find(item => item.id === cardid);
-    createPlayerSelectPopup(card);
-    document.getElementById('playCardBtn').style.display = hasValidTargetsForCard(card) ? 'block' : 'none';
+    if (cardid === 'decision-missile') {
+        createDecisionMissilePopup(card);
+        document.getElementById('playCardBtn').style.display = 'block';
+    } else {
+        createPlayerSelectPopup(card);
+        document.getElementById('playCardBtn').style.display = hasValidTargetsForCard(card) ? 'block' : 'none';
+    }
 
     showPopup();  // Show the popup after generating content
 
 }
+function createDecisionMissilePopup(card) {
+    const popupContent = document.getElementById('popupContent');
+
+    const actionLabel = document.createElement('label');
+    actionLabel.innerText = 'Choose an effect: ';
+    popupContent.appendChild(actionLabel);
+
+    const actionDropdown = document.createElement('select');
+    actionDropdown.id = 'decisionMissileActionDropdown';
+
+    const drawOption = document.createElement('option');
+    drawOption.value = 'draw';
+    drawOption.text = 'Draw 2 cards';
+    actionDropdown.appendChild(drawOption);
+
+    if (hasValidTargetsForCard(card)) {
+        const damageOption = document.createElement('option');
+        damageOption.value = 'damage';
+        damageOption.text = 'Deal 2 damage';
+        actionDropdown.appendChild(damageOption);
+    }
+
+    popupContent.appendChild(actionDropdown);
+    popupContent.appendChild(document.createElement('br'));
+
+    const targetWrapper = document.createElement('div');
+    targetWrapper.id = 'decisionMissileTargetWrapper';
+    popupContent.appendChild(targetWrapper);
+
+    const renderTargetSelect = () => {
+        targetWrapper.innerHTML = '';
+        if (actionDropdown.value !== 'damage') return;
+
+        const label = document.createElement('label');
+        label.innerText = 'Select a player: ';
+        targetWrapper.appendChild(label);
+
+        const dropdown = document.createElement('select');
+        dropdown.id = 'playerDropdown';
+        validTargetsForCard(card).forEach(player => {
+            const option = document.createElement('option');
+            option.value = player.name;
+            option.text = player.name;
+            dropdown.appendChild(option);
+        });
+        targetWrapper.appendChild(dropdown);
+        targetWrapper.appendChild(document.createElement('br'));
+    };
+
+    actionDropdown.addEventListener('change', renderTargetSelect);
+    renderTargetSelect();
+}
 function activateCalculatedShooting() {
     const selectedPlayer = document.getElementById('playerDropdown')?.value;
+    const decisionMissileAction = document.getElementById('decisionMissileActionDropdown')?.value;
     var cardid = cardSelected
     var headers = {
         joincode: joincode,
         username: username,
-        cardid: cardid,
-        target: selectedPlayer
+        cardid: cardid
     }
+    if (selectedPlayer) headers.target = selectedPlayer
+    if (decisionMissileAction) headers.decision_action = decisionMissileAction
     postWithFallback(`https://${serverip}/activateCalculatedShooting`, headers)
     closePopup();  // Close the popup after playing the card
 }

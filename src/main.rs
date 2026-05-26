@@ -201,10 +201,15 @@ fn format_play_event_message(
     }
 
     if !discarded_cards.is_empty() {
-        message.push_str(&format!(" and discarded {}", format_discarded_cards(discarded_cards)));
+        message.push_str(&format!(
+            " and discarded {}",
+            format_discarded_cards(discarded_cards)
+        ));
     }
 
-    if let Some(self_damage) = damage_amount(current_player_health_before, current_player_health_after) {
+    if let Some(self_damage) =
+        damage_amount(current_player_health_before, current_player_health_after)
+    {
         message.push_str(&format!(" and took {} damage", self_damage));
     }
 
@@ -226,7 +231,11 @@ fn resolved_hand_card(hand: &[Card], value: Option<String>) -> Option<Card> {
     hand.iter().find(|card| card.id == value).cloned()
 }
 
-fn selected_card_value(hand: &[Card], name: &str, req: &Request<Body>) -> Option<serde_json::Value> {
+fn selected_card_value(
+    hand: &[Card],
+    name: &str,
+    req: &Request<Body>,
+) -> Option<serde_json::Value> {
     let raw = header_value(req, name)?;
     let resolved_card = resolved_hand_card(hand, Some(raw.clone()));
     Some(serde_json::json!({
@@ -321,10 +330,7 @@ fn log_play_event(
     }
 
     if let Some(blocked_filter) = blocked_filter {
-        payload.insert(
-            "blocked_filter".to_string(),
-            card_log_value(blocked_filter),
-        );
+        payload.insert("blocked_filter".to_string(), card_log_value(blocked_filter));
     }
 
     payload.insert(
@@ -358,7 +364,10 @@ fn log_play_event(
             payload.insert("other_players_damage".to_string(), serde_json::json!(3));
         }
         "health-hazard" => {
-            payload.insert("target_health_randomized".to_string(), serde_json::json!(true));
+            payload.insert(
+                "target_health_randomized".to_string(),
+                serde_json::json!(true),
+            );
             if let Some(target_health_before) = target_health_before {
                 payload.insert(
                     "target_health_before".to_string(),
@@ -387,7 +396,10 @@ fn log_play_event(
         }
         "firing-filter" => {
             if let Some(firing_filter_type) = header_value(req, "firing_filter_type") {
-                payload.insert("filter_type".to_string(), serde_json::json!(firing_filter_type));
+                payload.insert(
+                    "filter_type".to_string(),
+                    serde_json::json!(firing_filter_type),
+                );
             }
         }
         _ => {}
@@ -450,7 +462,10 @@ fn blocking_firing_filter(
         return None;
     };
 
-    Some((active_filter.owner.clone(), active_filter.card_played.name.clone()))
+    Some((
+        active_filter.owner.clone(),
+        active_filter.card_played.name.clone(),
+    ))
 }
 
 fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response<Body> {
@@ -494,18 +509,18 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
     let hand_before = game.players[player_index].hand.clone();
     let current_player_health_before = game.players[player_index].health;
     let target_name = header_value(req, "target");
-    let (target_health_before, target_hand_before) = target_name.as_ref().and_then(|name| {
-        game.player_by_name(name).map(|player| {
-            (
-                Some(player.health),
-                Some(player.hand.clone()),
-            )
+    let (target_health_before, target_hand_before) = target_name
+        .as_ref()
+        .and_then(|name| {
+            game.player_by_name(name)
+                .map(|player| (Some(player.health), Some(player.hand.clone())))
         })
-    }).unwrap_or((None, None));
+        .unwrap_or((None, None));
 
     let card = game.players[player_index].hand[card_index].clone();
     if !(card.can_be_played)(&card, game, req) {
-        if let Some((filter_owner, blocking_filter_name)) = blocking_firing_filter(game, &card, req) {
+        if let Some((filter_owner, blocking_filter_name)) = blocking_firing_filter(game, &card, req)
+        {
             game.push_server_chat_message(format!(
                 "{}'s {} blocked {}'s {}",
                 filter_owner, blocking_filter_name, username, card.name
@@ -1029,15 +1044,20 @@ async fn handle_request(
                     match games.get_mut(&joincode) {
                         Some(game) => {
                             // Find the quitting player
-                            if let Some(player_index) = game.players.iter().position(|p| p.name == username) {
+                            if let Some(player_index) =
+                                game.players.iter().position(|p| p.name == username)
+                            {
                                 game.push_server_chat_message(format!("{} quit", username));
                                 if game.remove_player(player_index, true) {
                                     games.remove(&joincode);
                                 }
-                                
+
                                 return Ok(text_response(StatusCode::OK, "quit"));
                             } else {
-                                return Ok(text_response(StatusCode::NOT_FOUND, "player not found in game"));
+                                return Ok(text_response(
+                                    StatusCode::NOT_FOUND,
+                                    "player not found in game",
+                                ));
                             }
                         }
                         None => Ok(text_response(
@@ -1086,7 +1106,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if exe_dir.iter().any(|comp| comp == "target") {
         if let Some(two_up) = exe_dir.parent().and_then(|p| p.parent()) {
             cert_base = two_up.to_path_buf();
-            eprintln!("Running from cargo; looking for certs at {}", cert_base.display());
+            eprintln!(
+                "Running from cargo; looking for certs at {}",
+                cert_base.display()
+            );
         }
     }
 
@@ -1096,7 +1119,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Require cert and key to exist at the chosen location; fail otherwise.
     if !cert_path.exists() || !key_path.exists() {
-        eprintln!("Certificate or key not found in {}.\nPlace certificate.crt and private.key in that directory.", cert_base.display());
+        eprintln!(
+            "Certificate or key not found in {}.\nPlace certificate.crt and private.key in that directory.",
+            cert_base.display()
+        );
         return Err("certificate files not found".into());
     }
 
@@ -1108,11 +1134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     );
     // If a CA bundle exists, append its certs to form a chain
     if ca_path.exists() {
-        let mut ca_certs = load_certs(
-            ca_path
-                .to_str()
-                .expect("ca bundle path is not valid UTF-8"),
-        );
+        let mut ca_certs = load_certs(ca_path.to_str().expect("ca bundle path is not valid UTF-8"));
         certs.append(&mut ca_certs);
     }
 
@@ -1132,12 +1154,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let server_settings_path = "server_settings.json";
     let server_settings = load_server_settings(server_settings_path);
-    
+
     let state_file_path = "server_state.json";
     let state = if std::path::Path::new(state_file_path).exists() {
         println!("Loading state from {}", state_file_path);
-        let data = std::fs::read_to_string(state_file_path).expect("Failed to read server_state.json");
-        let server_state: ServerState = serde_json::from_str(&data).expect("Failed to parse server_state.json");
+        let data =
+            std::fs::read_to_string(state_file_path).expect("Failed to read server_state.json");
+        let server_state: ServerState =
+            serde_json::from_str(&data).expect("Failed to parse server_state.json");
         server_state.hydrate();
         Arc::new(server_state)
     } else {
@@ -1177,7 +1201,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = SocketAddr::new(bind_ip, server_settings.port);
     let listener = TcpListener::bind(addr).await?;
 
-    println!("HTTPS server listening on {}", server_connect_url(&server_settings));
+    println!(
+        "HTTPS server listening on {}",
+        server_connect_url(&server_settings)
+    );
 
     loop {
         let (stream, peer_addr) = listener.accept().await?;

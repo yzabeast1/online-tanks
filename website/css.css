@@ -595,10 +595,15 @@ img {
 
 #popupContent label {
     display: block;
-    margin-bottom: -8px;
+    margin-bottom: 6px;
     color: var(--muted);
     font-size: 15px;
     font-weight: 800;
+}
+
+#decisionMissileTargetWrapper {
+    display: grid;
+    gap: 6px;
 }
 
 #popupContent br {

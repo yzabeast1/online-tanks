@@ -160,14 +160,14 @@ pub fn all_cards() -> Vec<Card> {
         //     play: stub_play,
         //     count: 1,
         // },
-        // Card {
-        //     name: "Descision Missile".to_string(),
-        //     id: "descision-missile".to_string(),
-        //     card_type: CardType::Shooting(ShootingType::Calculated),
-        //     can_be_played: can_play_calculated_shooting,
-        //     play: stub_play,
-        //     count: 3,
-        // },
+        Card {
+            name: "Decision Missile".to_string(),
+            id: "decision-missile".to_string(),
+            card_type: CardType::Shooting(ShootingType::Calculated),
+            can_be_played: can_play_calculated_shooting,
+            play: play_decision_missile,
+            count: 3,
+        },
         Card {
             name: "Big Bomb".to_string(),
             id: "big-bomb".to_string(),
@@ -805,6 +805,54 @@ fn play_locked_on(card: &Card, game_state: &mut GameState, player_index: usize, 
         owner: game_state.players[player_index].name.clone(),
         turns_remaining: 3,
         when_done: aimed_missile_when_done,
+        card_played: card.clone(),
+    };
+
+    game_state
+        .active_cards
+        .active_calculated_shootings
+        .push(calc_shot);
+}
+fn decision_missile_when_done(
+    game_state: &mut GameState,
+    active: &ActiveCalculatedShooting,
+    req: &Request<Body>,
+) {
+    if header_value(req, "decision_action").as_deref() == Some("draw") {
+        let Some(owner_index) = game_state.player_index_from_name(&active.owner) else {
+            return;
+        };
+        game_state.draw_card(owner_index);
+        game_state.draw_card(owner_index);
+        game_state.push_server_chat_message(format!(
+            "Decision Missile let {} draw 2 cards",
+            active.owner
+        ));
+        return;
+    }
+
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_index) = game_state.player_index_from_name(&target) else {
+        return;
+    };
+
+    game_state.damage_player(target_index, 2);
+    game_state
+        .push_server_chat_message(format!("Decision Missile hit {} dealing 2 damage", target));
+}
+
+fn play_decision_missile(
+    card: &Card,
+    game_state: &mut GameState,
+    player_index: usize,
+    _: &Request<Body>,
+) {
+    let calc_shot = ActiveCalculatedShooting {
+        owner: game_state.players[player_index].name.clone(),
+        turns_remaining: 1,
+        when_done: decision_missile_when_done,
         card_played: card.clone(),
     };
 
