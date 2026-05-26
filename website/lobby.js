@@ -181,11 +181,22 @@ function createDeck() {
             img.alt = card.name; // Set the alt text to the card's name
             img.style.width = '150px'; // Optional: set the image size
             img.style.margin = '10px'; // Optional: add some margin between images
+            img.addEventListener('click', () => openDeckCardModal(img.src));
 
             // Append the image to the deckDiv
             deckDiv.appendChild(img);
         });
     })
+}
+function openDeckCardModal(imageSrc) {
+    const modal = document.getElementById('modal');
+    const modalImage = document.getElementById('modalImage');
+    const playCardButton = document.getElementById('play-card');
+
+    document.body.appendChild(modal);
+    modalImage.src = imageSrc;
+    playCardButton.style.display = 'none';
+    modal.style.display = 'flex';
 }
 function addCardToDeck() {
     const image = document.createElement('image')

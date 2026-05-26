@@ -31,6 +31,8 @@ function sendMessage() {
 
     // Add the message to the chat box locally
     addMessageToChatBox(`${username}: ${message}`, 'user-message');
+    const chatBox = document.getElementById('chat-box');
+    chatBox.scrollTop = chatBox.scrollHeight;
     const headers = {
         'Content-Type': 'application/json',
         'joincode': joincode,  // Use dynamic joincode
@@ -58,11 +60,20 @@ function fetchChatMessages(joincode) {
     fetchWithFallback(`https://${serverip}/getChat`,headers)
         .then(data => {
             if (data && data.length > 0) {
+                const chatBox = document.getElementById('chat-box');
+                const distanceFromBottom = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight;
+                const shouldStickToBottom = distanceFromBottom < 24;
+                const previousScrollTop = chatBox.scrollTop;
                 clearChatBox();
                 data.forEach(message => {
-                    if(message.sender!='server')addMessageToChatBox(`${message.sender}: ${message.message}`, 'server-message');
+                    if(message.sender!='server')addMessageToChatBox(`${message.sender}: ${message.message}`, message.sender === username ? 'user-message' : 'server-message');
                     else addLogToChatBox(`${message.message}`,'action-log')
                 });
+                if (shouldStickToBottom) {
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                } else {
+                    chatBox.scrollTop = previousScrollTop;
+                }
             } else {
                 console.warn('No messages found for this joincode.');
             }
@@ -80,18 +91,15 @@ function addMessageToChatBox(message, className) {
 
     const chatBox = document.getElementById('chat-box');
     chatBox.appendChild(messageElement);
-    chatBox.scrollTop = chatBox.scrollHeight; // Scroll to the bottom
 }
 function addLogToChatBox(message, classname){
     const messageElement = document.createElement('div');
     messageElement.className = classname;
-    strong=document.createElement('strong')
-    strong.className=classname
+    const strong=document.createElement('strong')
     strong.innerHTML="Action: "+message
     messageElement.appendChild(strong)
     const chatBox = document.getElementById('chat-box');
     chatBox.appendChild(messageElement);
-    chatBox.scrollTop = chatBox.scrollHeight; // Scroll to the bottom
 }
 
 function clearChatBox() {
