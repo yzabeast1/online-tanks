@@ -1,6 +1,7 @@
 use crate::{header_value, structs::*};
 use hyper::{Body, Request};
 use rand::{Rng, thread_rng};
+use serde::Deserialize;
 
 pub fn stub_play(_: &Card, _: &mut GameState, _: usize, _: &Request<Body>) {}
 
@@ -152,14 +153,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_locked_on,
             count: 4,
         },
-        // Card {
-        //     name: "Multi Strike".to_string(),
-        //     id: "multi-strike".to_string(),
-        //     card_type: CardType::Shooting(ShootingType::Calculated),
-        //     can_be_played: can_play_calculated_shooting,
-        //     play: stub_play,
-        //     count: 1,
-        // },
+        Card {
+            name: "Multi Strike".to_string(),
+            id: "multi-strike".to_string(),
+            card_type: CardType::Shooting(ShootingType::Calculated),
+            can_be_played: can_play_calculated_shooting,
+            play: play_multi_strike,
+            count: 1,
+        },
         Card {
             name: "Decision Missile".to_string(),
             id: "decision-missile".to_string(),
@@ -442,6 +443,10 @@ fn shooting_allowed_by_no_shooting(game_state: &GameState) -> bool {
 }
 
 fn can_play_distractor_shooting(game_state: &GameState) -> bool {
+    if game_state.turn_state.shooting_locked {
+        return false;
+    }
+
     if !shooting_allowed_by_no_shooting(game_state) {
         return false;
     }
@@ -450,6 +455,10 @@ fn can_play_distractor_shooting(game_state: &GameState) -> bool {
 }
 
 fn can_play_shooting(game_state: &GameState) -> bool {
+    if game_state.turn_state.shooting_locked {
+        return false;
+    }
+
     if !shooting_allowed_by_no_shooting(game_state) {
         return false;
     }
@@ -486,6 +495,10 @@ fn can_play_airstrike(_card: &Card, game_state: &GameState, req: &Request<Body>)
 }
 
 fn can_play_more_ammo(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool {
+    if game_state.turn_state.shooting_locked {
+        return false;
+    }
+
     if game_state.turn_state.event_card_played && game_state.turn_state.more_ammo_played == 0 {
         return false;
     }
@@ -813,6 +826,88 @@ fn play_locked_on(card: &Card, game_state: &mut GameState, player_index: usize, 
         .active_calculated_shootings
         .push(calc_shot);
 }
+#[derive(Deserialize)]
+struct MultiStrikeAllocation {
+    target: String,
+    damage: isize,
+}
+
+fn multi_strike_when_done(
+    game_state: &mut GameState,
+    active: &ActiveCalculatedShooting,
+    req: &Request<Body>,
+) {
+    let Some(raw_allocations) = header_value(req, "multistrike_allocations") else {
+        return;
+    };
+    let Ok(allocations) = serde_json::from_str::<Vec<MultiStrikeAllocation>>(&raw_allocations)
+    else {
+        return;
+    };
+
+    let allocations = allocations
+        .into_iter()
+        .filter(|allocation| allocation.damage > 0)
+        .collect::<Vec<_>>();
+
+    let total_damage = allocations
+        .iter()
+        .map(|allocation| allocation.damage)
+        .sum::<isize>();
+    if total_damage != 7 || allocations.len() < 2 {
+        return;
+    }
+
+    let mut unique_targets = std::collections::HashSet::new();
+    for allocation in &allocations {
+        if !unique_targets.insert(allocation.target.as_str())
+            || game_state.player_index_from_name(&allocation.target).is_none()
+        {
+            return;
+        }
+    }
+
+    if game_state.players.len() == 2 {
+        let self_damage = allocations
+            .iter()
+            .find(|allocation| allocation.target == active.owner)
+            .map(|allocation| allocation.damage)
+            .unwrap_or(0);
+        if self_damage < 1 {
+            return;
+        }
+    }
+
+    for allocation in allocations {
+        if let Some(target_index) = game_state.player_index_from_name(&allocation.target) {
+            game_state.damage_player(target_index, allocation.damage);
+            game_state.push_server_chat_message(format!(
+                "Multi Strike hit {} dealing {} damage",
+                allocation.target, allocation.damage
+            ));
+        }
+    }
+}
+
+fn play_multi_strike(
+    card: &Card,
+    game_state: &mut GameState,
+    player_index: usize,
+    _: &Request<Body>,
+) {
+    let calc_shot = ActiveCalculatedShooting {
+        owner: game_state.players[player_index].name.clone(),
+        turns_remaining: 4,
+        when_done: multi_strike_when_done,
+        card_played: card.clone(),
+    };
+
+    game_state
+        .active_cards
+        .active_calculated_shootings
+        .push(calc_shot);
+}
+
 fn decision_missile_when_done(
     game_state: &mut GameState,
     active: &ActiveCalculatedShooting,

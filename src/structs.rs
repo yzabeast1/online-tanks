@@ -118,6 +118,8 @@ pub struct TurnState {
     pub more_ammo_played: usize,
     pub event_card_played: bool,
     pub no_shooting_played: bool,
+    #[serde(default)]
+    pub shooting_locked: bool,
     pub total_cards_played: usize,
 }
 
@@ -129,6 +131,7 @@ impl TurnState {
             more_ammo_played: 0,
             event_card_played: false,
             no_shooting_played: false,
+            shooting_locked: false,
             total_cards_played: 0,
         };
     }

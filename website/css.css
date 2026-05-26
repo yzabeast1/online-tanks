@@ -606,6 +606,33 @@ img {
     gap: 6px;
 }
 
+#multiStrikeAllocationList {
+    display: grid;
+    gap: 10px;
+}
+
+.multi-strike-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 96px;
+    gap: 12px;
+    align-items: center;
+}
+
+.multi-strike-row label {
+    margin: 0;
+}
+
+.multi-strike-row input {
+    width: 100%;
+    min-height: 44px;
+}
+
+#playCardBtn:disabled {
+    opacity: 0.52;
+    cursor: not-allowed;
+    transform: none;
+}
+
 #popupContent br {
     display: none;
 }

@@ -278,17 +278,21 @@ function clearIntervals() {
 }
 function activateCalculatedShootingPopup(cardid) {
     cardSelected = cardid
-    document.getElementById('playCardBtn').onclick = activateCalculatedShooting
+    const playButton = document.getElementById('playCardBtn');
+    playButton.onclick = activateCalculatedShooting
+    playButton.disabled = false;
     const popupContent = document.getElementById('popupContent');
     popupContent.innerHTML = '';  // Clear previous popup content
 
     const card = deck.find(item => item.id === cardid);
     if (cardid === 'decision-missile') {
         createDecisionMissilePopup(card);
-        document.getElementById('playCardBtn').style.display = 'block';
+        playButton.style.display = 'block';
+    } else if (cardid === 'multi-strike') {
+        createMultiStrikePopup();
     } else {
         createPlayerSelectPopup(card);
-        document.getElementById('playCardBtn').style.display = hasValidTargetsForCard(card) ? 'block' : 'none';
+        playButton.style.display = hasValidTargetsForCard(card) ? 'block' : 'none';
     }
 
     showPopup();  // Show the popup after generating content
@@ -346,9 +350,73 @@ function createDecisionMissilePopup(card) {
     actionDropdown.addEventListener('change', renderTargetSelect);
     renderTargetSelect();
 }
+function createMultiStrikePopup() {
+    const popupContent = document.getElementById('popupContent');
+
+    const totalLabel = document.createElement('label');
+    totalLabel.id = 'multiStrikeTotalLabel';
+    popupContent.appendChild(totalLabel);
+
+    const allocationList = document.createElement('div');
+    allocationList.id = 'multiStrikeAllocationList';
+    popupContent.appendChild(allocationList);
+
+    gameData.players.forEach(player => {
+        const row = document.createElement('div');
+        row.classList.add('multi-strike-row');
+
+        const label = document.createElement('label');
+        label.htmlFor = `multiStrikeDamage_${player.name}`;
+        label.innerText = player.name;
+        row.appendChild(label);
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.id = `multiStrikeDamage_${player.name}`;
+        input.dataset.target = player.name;
+        input.classList.add('multi-strike-damage');
+        input.min = '0';
+        input.max = '7';
+        input.step = '1';
+        input.value = '0';
+        input.addEventListener('input', updateMultiStrikeState);
+        row.appendChild(input);
+
+        allocationList.appendChild(row);
+    });
+
+    updateMultiStrikeState();
+}
+function multiStrikeAllocations() {
+    return Array.from(document.querySelectorAll('.multi-strike-damage'))
+        .map(input => ({
+            target: input.dataset.target,
+            damage: Number.parseInt(input.value, 10) || 0
+        }))
+        .filter(allocation => allocation.damage > 0);
+}
+function updateMultiStrikeState() {
+    const allocations = multiStrikeAllocations();
+    const total = allocations.reduce((sum, allocation) => sum + allocation.damage, 0);
+    const targetCount = allocations.length;
+    const selfAllocation = allocations.find(allocation => allocation.target === username);
+    const needsSelfDamage = gameData.players.length === 2;
+    const isValid = total === 7 && targetCount >= 2 && (!needsSelfDamage || (selfAllocation?.damage || 0) >= 1);
+
+    const totalLabel = document.getElementById('multiStrikeTotalLabel');
+    if (totalLabel) {
+        const selfDamageText = needsSelfDamage ? ', including at least 1 to yourself' : '';
+        totalLabel.innerText = `Assign 7 total damage across at least 2 targets${selfDamageText}. Current total: ${total}`;
+    }
+
+    const playButton = document.getElementById('playCardBtn');
+    playButton.style.display = 'block';
+    playButton.disabled = !isValid;
+}
 function activateCalculatedShooting() {
     const selectedPlayer = document.getElementById('playerDropdown')?.value;
     const decisionMissileAction = document.getElementById('decisionMissileActionDropdown')?.value;
+    const multiStrikeDamageInputs = document.querySelectorAll('.multi-strike-damage');
     var cardid = cardSelected
     var headers = {
         joincode: joincode,
@@ -357,6 +425,7 @@ function activateCalculatedShooting() {
     }
     if (selectedPlayer) headers.target = selectedPlayer
     if (decisionMissileAction) headers.decision_action = decisionMissileAction
+    if (multiStrikeDamageInputs.length > 0) headers.multistrike_allocations = JSON.stringify(multiStrikeAllocations())
     postWithFallback(`https://${serverip}/activateCalculatedShooting`, headers)
     closePopup();  // Close the popup after playing the card
 }

@@ -647,7 +647,11 @@ fn activate_calculated_shooting_response(
         .active_cards
         .active_calculated_shootings
         .remove(active_index);
+    let activated_card_id = active.card_played.id.clone();
     (active.when_done)(game, &active, req);
+    if activated_card_id == "multi-strike" {
+        game.turn_state.shooting_locked = true;
+    }
     game.discard_pile.push(active.card_played);
 
     json_response(
