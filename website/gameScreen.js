@@ -101,11 +101,18 @@ function renderGame() {
                     orderedPlayers = gameData.players;
                 }
 
+                const opponentGrid = document.createElement('div');
+                opponentGrid.classList.add('opponent-grid');
+
                 // Render players' hands
                 for (let j = 0; j < orderedPlayers.length; j++) {
                     const playerData = orderedPlayers[j];
+                    const isMyPlayer = playerData.name === username;
                     const playerDiv = document.createElement('div');
                     playerDiv.classList.add('player');
+                    if (!isMyPlayer) {
+                        playerDiv.classList.add('opponent-player');
+                    }
 
                     const healthText = document.createElement('p');
                     healthText.innerText = `${playerData.name}'s Health: ${playerData.health}`;
@@ -135,39 +142,52 @@ function renderGame() {
                     const handDiv = document.createElement('div');
                     handDiv.classList.add('hand');
 
-                    const visibleCards = playerData.name === username ? playerData.hand : [];
-                    const hiddenCardCount = playerData.name === username ? 0 : (playerData.hand_count || 0);
-                    const cardsToRender = [
-                        ...visibleCards.map(card => ({ card, hidden: false })),
-                        ...Array.from({ length: hiddenCardCount }, () => ({ card: null, hidden: true }))
-                    ];
-
-                    cardsToRender.forEach(({ card, hidden }) => {
+                    if (!isMyPlayer) {
+                        handDiv.classList.add('opponent-hand');
                         const cardDiv = document.createElement('div');
-                        cardDiv.classList.add('card');
+                        cardDiv.classList.add('card', 'opponent-card-count');
 
                         const img = document.createElement('img');
-                        if (!hidden) {
+                        img.src = `https://${serverip}/images/back.png`;
+                        img.alt = 'Card Back';
+
+                        const count = document.createElement('span');
+                        const handCount = playerData.hand_count || 0;
+                        count.classList.add('card-count-badge');
+                        count.innerText = handCount.toString();
+                        count.setAttribute('aria-label', `${handCount} cards`);
+
+                        cardDiv.appendChild(img);
+                        cardDiv.appendChild(count);
+                        handDiv.appendChild(cardDiv);
+                    } else {
+                        playerData.hand.forEach((card) => {
+                            const cardDiv = document.createElement('div');
+                            cardDiv.classList.add('card');
+
+                            const img = document.createElement('img');
                             img.src = `https://${serverip}/images/${cardImageFolder(card.card_type)}/${card.id}.png`;  // Use card ID to get the front image
                             img.alt = card.name;
                             cardDiv.classList.add('my-hand');
-                        } else {
-                            img.src = `https://${serverip}/images/back.png`;  // Use the back image for others
-                            img.alt = 'Card Back';
-                        }
 
-                        cardDiv.appendChild(img);
+                            cardDiv.appendChild(img);
 
-                        if (!hidden) {
                             // Add click event to zoom in on card
                             cardDiv.addEventListener('click', () => openModal(img.src, card));
-                        }
 
-                        handDiv.appendChild(cardDiv);
-                    });
+                            handDiv.appendChild(cardDiv);
+                        });
+                    }
 
                     playerDiv.appendChild(handDiv);
-                    gameDiv.appendChild(playerDiv);
+                    if (isMyPlayer) {
+                        gameDiv.appendChild(playerDiv);
+                    } else {
+                        opponentGrid.appendChild(playerDiv);
+                    }
+                }
+                if (opponentGrid.children.length > 0) {
+                    gameDiv.appendChild(opponentGrid);
                 }
                 renderedData = gameData
             }

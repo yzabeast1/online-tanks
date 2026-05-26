@@ -315,6 +315,17 @@ label[for="show-deck-checkbox"] {
     padding: 14px;
 }
 
+.opponent-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+
+.opponent-player {
+    margin-bottom: 0;
+}
+
 .player > p {
     margin: 0 0 12px;
     color: var(--text);
@@ -346,6 +357,10 @@ label[for="show-deck-checkbox"] {
     align-items: start;
 }
 
+.opponent-hand {
+    grid-template-columns: minmax(96px, 138px);
+}
+
 .card {
     aspect-ratio: 2 / 3;
     width: 100%;
@@ -366,6 +381,37 @@ label[for="show-deck-checkbox"] {
     border-color: rgba(240, 190, 95, 0.72);
     transform: translateY(-3px);
     box-shadow: 0 16px 28px rgba(0, 0, 0, 0.38);
+}
+
+.opponent-card-count {
+    position: relative;
+    cursor: default;
+}
+
+.opponent-card-count:hover {
+    border-color: rgba(244, 239, 224, 0.16);
+    transform: none;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.card-count-badge {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0 8px;
+    border: 1px solid rgba(244, 239, 224, 0.24);
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(12, 14, 10, 0.84);
+    color: #f4efe0;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.34);
 }
 
 .my-hand.card,
