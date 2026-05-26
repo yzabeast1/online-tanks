@@ -273,13 +273,13 @@ impl GameState {
             return;
         }
         self.turn_state = TurnState::new();
+        self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
         for calculated_shooting in self.active_cards.active_calculated_shootings.iter_mut() {
             if calculated_shooting.owner == self.players[self.current_turn_player].name {
                 calculated_shooting.turns_remaining =
                     calculated_shooting.turns_remaining.saturating_sub(1);
             }
         }
-        self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
         if self.active_cards.no_shooting_played_by == self.current_turn_player as isize {
             if let Some(card) = self.active_cards.no_shooting_card.take() {
                 self.discard_pile.push(card);

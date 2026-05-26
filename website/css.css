@@ -459,6 +459,10 @@ img {
     backdrop-filter: blur(5px);
 }
 
+#popupModal {
+    z-index: 1100;
+}
+
 #modal img {
     width: auto;
     height: min(92vh, 760px);
