@@ -128,14 +128,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_stolen_parts,
             count: 5,
         },
-        // Card {
-        //     name: "Distractor Missile".to_string(),
-        //     id: "distractor-missile".to_string(),
-        //     card_type: CardType::Shooting(ShootingType::Quick),
-        //     can_be_played: can_play_distractor_missile,
-        //     play: stub_play,
-        //     count: 8,
-        // },
+        Card {
+            name: "Distractor Missile".to_string(),
+            id: "distractor-missile".to_string(),
+            card_type: CardType::Shooting(ShootingType::Quick),
+            can_be_played: can_play_distractor_missile,
+            play: play_distractor_missile,
+            count: 8,
+        },
         Card {
             name: "Aimed Missile".to_string(),
             id: "aimed-missile".to_string(),
@@ -345,15 +345,44 @@ fn can_play_nuke(_card: &Card, game_state: &GameState, req: &Request<Body>) -> b
     return can_play_boom_shooting(_card, game_state, req);
 }
 
-fn can_play_distractor_missile(_card: &Card, game_state: &GameState, _req: &Request<Body>) -> bool {
-    if game_state
+fn selected_active_calculated_shooting_index(
+    req: &Request<Body>,
+    game_state: &GameState,
+    current_player_name: &str,
+) -> Option<usize> {
+    let value = header_value(req, "queuedcard")?;
+    if let Some((index, card_id)) = value.split_once(':') {
+        let index = index.parse::<usize>().ok()?;
+        if game_state
+            .active_cards
+            .active_calculated_shootings
+            .get(index)
+            .is_some_and(|shooting| {
+                shooting.owner != current_player_name && shooting.card_played.id == card_id
+            })
+        {
+            return Some(index);
+        }
+        return None;
+    }
+
+    game_state
         .active_cards
         .active_calculated_shootings
-        .is_empty()
-    {
+        .iter()
+        .position(|shooting| {
+            shooting.owner != current_player_name && shooting.card_played.id == value
+        })
+}
+
+fn can_play_distractor_missile(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
+    let current_player_name = &game_state.players[game_state.current_turn_player].name;
+
+    if selected_active_calculated_shooting_index(req, game_state, current_player_name).is_none() {
         return false;
     }
-    return can_play_quick_shooting(_card, game_state, _req);
+
+    return can_play_distractor_shooting(game_state);
 }
 
 fn can_play_quick_shooting(_: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
@@ -403,15 +432,38 @@ fn can_play_boom_shooting(_: &Card, game_state: &GameState, req: &Request<Body>)
     return can_play_shooting(game_state);
 }
 
-fn can_play_shooting(game_state: &GameState) -> bool {
+fn shooting_allowed_by_no_shooting(game_state: &GameState) -> bool {
     if game_state.active_cards.no_shooting_played_by != -1
         && game_state.current_turn_player as isize != game_state.active_cards.no_shooting_played_by
     {
         return false;
     }
-    if game_state.turn_state.shooting_card_played >= game_state.turn_state.more_ammo_played + 1 {
+    return true;
+}
+
+fn can_play_distractor_shooting(game_state: &GameState) -> bool {
+    if !shooting_allowed_by_no_shooting(game_state) {
         return false;
     }
+
+    return game_state.turn_state.shooting_card_played <= game_state.turn_state.more_ammo_played;
+}
+
+fn can_play_shooting(game_state: &GameState) -> bool {
+    if !shooting_allowed_by_no_shooting(game_state) {
+        return false;
+    }
+
+    let max_shooting = if game_state.turn_state.distractor_missile_played > 0 {
+        game_state.turn_state.more_ammo_played
+    } else {
+        game_state.turn_state.more_ammo_played + 1
+    };
+
+    if game_state.turn_state.shooting_card_played >= max_shooting {
+        return false;
+    }
+
     return true;
 }
 
@@ -609,6 +661,29 @@ fn play_painful_draw(_: &Card, game_state: &mut GameState, player_index: usize, 
 }
 fn play_more_ammo(_: &Card, game_state: &mut GameState, _: usize, _: &Request<Body>) {
     game_state.turn_state.more_ammo_played += 1;
+}
+fn play_distractor_missile(
+    _: &Card,
+    game_state: &mut GameState,
+    player_index: usize,
+    req: &Request<Body>,
+) {
+    let current_player_name = game_state.players[player_index].name.clone();
+    let Some(shooting_index) =
+        selected_active_calculated_shooting_index(req, game_state, &current_player_name)
+    else {
+        return;
+    };
+
+    let shooting = game_state
+        .active_cards
+        .active_calculated_shootings
+        .remove(shooting_index);
+    game_state.discard_pile.push(shooting.card_played.clone());
+    game_state.push_server_chat_message(format!(
+        "{} distracted {}'s {}",
+        current_player_name, shooting.owner, shooting.card_played.name
+    ));
 }
 fn play_health_hazard(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
     let target = header_value(req, "target").unwrap();

@@ -113,6 +113,8 @@ impl Player {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TurnState {
     pub shooting_card_played: usize,
+    #[serde(default)]
+    pub distractor_missile_played: usize,
     pub more_ammo_played: usize,
     pub event_card_played: bool,
     pub no_shooting_played: bool,
@@ -123,6 +125,7 @@ impl TurnState {
     pub fn new() -> Self {
         return TurnState {
             shooting_card_played: 0,
+            distractor_missile_played: 0,
             more_ammo_played: 0,
             event_card_played: false,
             no_shooting_played: false,

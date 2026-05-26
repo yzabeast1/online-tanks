@@ -11,7 +11,7 @@ function cardNeedsTarget(card) {
     if (!card) return false;
     const type = shootingType(card);
     const isCalculatedShooting = type === 'Calculated';
-    return ((type && card.id !== 'landmine') && !isCalculatedShooting)
+    return ((type && !['landmine', 'distractor-missile'].includes(card.id)) && !isCalculatedShooting)
         || card.id === 'airstrike'
         || card.id === 'steal'
         || card.id === 'health-hazard';
@@ -36,6 +36,10 @@ function hasValidTargetsForCard(card) {
     return validTargetsForCard(card).length > 0;
 }
 
+function validQueuedCardsForDistractorMissile() {
+    return gameData.active_cards.active_calculated_shootings.filter(s => s.owner !== username);
+}
+
 function playCard() {
     var card = cardSelected
     if (!card) {
@@ -55,6 +59,9 @@ function playCard() {
         if (cardNeedsTarget(deckCard) && !hasValidTargetsForCard(deckCard)) {
             document.getElementById('playCardBtn').style.display = 'none'
         }
+        if (deckCard.id === 'distractor-missile' && validQueuedCardsForDistractorMissile().length === 0) {
+            document.getElementById('playCardBtn').style.display = 'none'
+        }
         if (cardNeedsTarget(deckCard)) {
             actions.push('target');
         }
@@ -64,6 +71,9 @@ function playCard() {
         }
         if (deckCard.id === 'firing-filter') {
             actions.push('firing_filter_type');
+        }
+        if (deckCard.id === 'distractor-missile') {
+            actions.push('queuedcard');
         }
         if(deckCard.id === 'helpful-hand') {
             actions.push('discardcard');
@@ -99,16 +109,14 @@ function createQueuedCardDropdown(username) {
     dropdown.id = `queuedCardDropdown`;
     dropdown.innerHTML = '';  // Clear any existing options
 
-    const myPlayer = gameData.players.find(p => p.name === username);
-    if (myPlayer) {
-        const queuedCards = gameData.active_cards.active_calculated_shootings.filter(s => s.owner === myPlayer.name);
-        queuedCards.forEach(s => {
+    gameData.active_cards.active_calculated_shootings
+        .forEach((s, index) => {
+            if (s.owner === username) return;
             const option = document.createElement('option');
-            option.value = s.card_played.id;
-            option.text = `${s.card_played.name} with countdown ${s.turns_remaining}`;
+            option.value = `${index}:${s.card_played.id}`;
+            option.text = `${s.owner}'s ${s.card_played.name} with countdown ${s.turns_remaining}`;
             dropdown.appendChild(option);
         });
-    }
 
     popupContent.appendChild(dropdown);
     popupContent.appendChild(document.createElement('br'))

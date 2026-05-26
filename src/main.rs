@@ -543,7 +543,11 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
 
     match card.card_type {
         CardType::Shooting(_) => {
-            game.turn_state.shooting_card_played += 1;
+            if card.id == "distractor-missile" {
+                game.turn_state.distractor_missile_played += 1;
+            } else {
+                game.turn_state.shooting_card_played += 1;
+            }
         }
         CardType::Event => {
             game.turn_state.event_card_played = true;
