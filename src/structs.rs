@@ -229,7 +229,7 @@ impl ServerState {
 
     pub fn hydrate(&self) {
         let templates = crate::cards::all_cards();
-        let mut games = self.games.lock().unwrap();
+        let mut games = crate::lock_or_recover(&self.games, "games");
         for game in games.values_mut() {
             game.hydrate(&templates);
         }

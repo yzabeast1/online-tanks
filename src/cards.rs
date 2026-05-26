@@ -332,12 +332,14 @@ fn can_play_cold_war(_: &Card, game_state: &GameState, _: &Request<Body>) -> boo
 }
 
 fn can_play_nuke(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
-    if game_state
-        .player_by_name(&header_value(req, "target").unwrap())
-        .unwrap()
-        .health
-        == 2
-    {
+    let Some(target) = header_value(req, "target") else {
+        return false;
+    };
+    let Some(target_player) = game_state.player_by_name(&target) else {
+        return false;
+    };
+
+    if target_player.health == 2 {
         return false;
     }
     if game_state.turn_state.total_cards_played != 0 {
@@ -402,13 +404,17 @@ fn can_play_quick_shooting(_: &Card, game_state: &GameState, req: &Request<Body>
     let headers = req.headers();
     let target_player_name = headers.get("target").and_then(|value| value.to_str().ok());
 
-    if let Some(target_name) = target_player_name {
-        for active_filter in &game_state.active_cards.active_firing_filters {
-            if active_filter.owner == target_name
-                && active_filter.filter_type == ShootingType::Quick
-            {
-                return false;
-            }
+    let Some(target_name) = target_player_name else {
+        return false;
+    };
+
+    if game_state.player_by_name(target_name).is_none() {
+        return false;
+    };
+
+    for active_filter in &game_state.active_cards.active_firing_filters {
+        if active_filter.owner == target_name && active_filter.filter_type == ShootingType::Quick {
+            return false;
         }
     }
     return can_play_shooting(game_state);
@@ -418,13 +424,19 @@ fn can_play_calculated_shooting(_: &Card, game_state: &GameState, req: &Request<
     let headers = req.headers();
     let target_player_name = headers.get("target").and_then(|value| value.to_str().ok());
 
-    if let Some(target_name) = target_player_name {
-        for active_filter in &game_state.active_cards.active_firing_filters {
-            if active_filter.owner == target_name
-                && active_filter.filter_type == ShootingType::Calculated
-            {
-                return false;
-            }
+    let Some(target_name) = target_player_name else {
+        return false;
+    };
+
+    if game_state.player_by_name(target_name).is_none() {
+        return false;
+    };
+
+    for active_filter in &game_state.active_cards.active_firing_filters {
+        if active_filter.owner == target_name
+            && active_filter.filter_type == ShootingType::Calculated
+        {
+            return false;
         }
     }
     return can_play_shooting(game_state);
@@ -434,12 +446,17 @@ fn can_play_boom_shooting(_: &Card, game_state: &GameState, req: &Request<Body>)
     let headers = req.headers();
     let target_player_name = headers.get("target").and_then(|value| value.to_str().ok());
 
-    if let Some(target_name) = target_player_name {
-        for active_filter in &game_state.active_cards.active_firing_filters {
-            if active_filter.owner == target_name && active_filter.filter_type == ShootingType::Boom
-            {
-                return false;
-            }
+    let Some(target_name) = target_player_name else {
+        return false;
+    };
+
+    if game_state.player_by_name(target_name).is_none() {
+        return false;
+    };
+
+    for active_filter in &game_state.active_cards.active_firing_filters {
+        if active_filter.owner == target_name && active_filter.filter_type == ShootingType::Boom {
+            return false;
         }
     }
     return can_play_shooting(game_state);
@@ -637,8 +654,16 @@ fn play_no_shooting(
     game_state.turn_state.no_shooting_played = true;
 }
 fn play_steal(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
-    let target = header_value(req, "target").unwrap();
-    let hand = &mut game_state.player_by_name_mut(&target).unwrap().hand;
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_player) = game_state.player_by_name_mut(&target) else {
+        return;
+    };
+    let hand = &mut target_player.hand;
+    if hand.is_empty() {
+        return;
+    }
     let card_index = thread_rng().gen_range(0..hand.len());
     let stolen_card = hand[card_index].clone();
     hand.remove(card_index);
@@ -711,8 +736,13 @@ fn play_distractor_missile(
     ));
 }
 fn play_health_hazard(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
-    let target = header_value(req, "target").unwrap();
-    game_state.player_by_name_mut(&target).unwrap().health = thread_rng().gen_range(1..=10);
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_player) = game_state.player_by_name_mut(&target) else {
+        return;
+    };
+    target_player.health = thread_rng().gen_range(1..=10);
 }
 fn play_spray(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
     game_state.heal_player(player_index, 1);
@@ -721,23 +751,43 @@ fn play_spray(_: &Card, game_state: &mut GameState, player_index: usize, _: &Req
     }
 }
 fn play_nuke(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
-    let target = header_value(req, "target").unwrap();
-    game_state.player_by_name_mut(&target).unwrap().health = 2;
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_player) = game_state.player_by_name_mut(&target) else {
+        return;
+    };
+    target_player.health = 2;
     game_state.next_turn();
 }
 fn play_big_bomb(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
-    let target = header_value(req, "target").unwrap();
-    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 6);
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_index) = game_state.player_index_from_name(&target) else {
+        return;
+    };
+    game_state.damage_player(target_index, 6);
     game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize * 5);
 }
 fn play_small_bomb(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
-    let target = header_value(req, "target").unwrap();
-    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 3);
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_index) = game_state.player_index_from_name(&target) else {
+        return;
+    };
+    game_state.damage_player(target_index, 3);
     game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize);
 }
 fn play_crack(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
-    let target = header_value(req, "target").unwrap();
-    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 2);
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_index) = game_state.player_index_from_name(&target) else {
+        return;
+    };
+    game_state.damage_player(target_index, 2);
 }
 fn play_stolen_parts(
     _: &Card,
@@ -745,13 +795,23 @@ fn play_stolen_parts(
     player_index: usize,
     req: &Request<Body>,
 ) {
-    let target = header_value(req, "target").unwrap();
-    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 2);
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_index) = game_state.player_index_from_name(&target) else {
+        return;
+    };
+    game_state.damage_player(target_index, 2);
     game_state.heal_player(player_index, 1);
 }
 fn play_dent(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
-    let target = header_value(req, "target").unwrap();
-    game_state.damage_player(game_state.player_index_from_name(&target).unwrap(), 1);
+    let Some(target) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_index) = game_state.player_index_from_name(&target) else {
+        return;
+    };
+    game_state.damage_player(target_index, 1);
 }
 fn play_firing_filter(
     card: &Card,

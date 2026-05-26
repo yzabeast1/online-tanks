@@ -2,7 +2,13 @@ mod cards;
 mod structs;
 use structs::*;
 
-use std::{convert::Infallible, fs::File, io::BufReader, net::SocketAddr, sync::Arc};
+use std::{
+    convert::Infallible,
+    fs::File,
+    io::BufReader,
+    net::SocketAddr,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use hyper::service::service_fn;
 use hyper::{Body, Method, Request, Response, StatusCode};
@@ -89,6 +95,16 @@ fn header_value(req: &Request<Body>, name: &str) -> Option<String> {
         .get(name)
         .and_then(|value| value.to_str().ok())
         .map(|value| value.to_string())
+}
+
+fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("recovering poisoned {} mutex", name);
+            poisoned.into_inner()
+        }
+    }
 }
 
 fn text_response(status: StatusCode, body: impl Into<Body>) -> Response<Body> {
@@ -501,7 +517,7 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
         );
     };
 
-    let mut games = state.games.lock().unwrap();
+    let mut games = lock_or_recover(&state.games, "games");
     let Some(game) = games.get_mut(&joincode) else {
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
     };
@@ -646,7 +662,7 @@ fn activate_calculated_shooting_response(
         );
     };
 
-    let mut games = state.games.lock().unwrap();
+    let mut games = lock_or_recover(&state.games, "games");
     let Some(game) = games.get_mut(&joincode) else {
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
     };
@@ -816,7 +832,7 @@ async fn handle_request(
             let username = header_value(&req, "username");
             match username {
                 Some(username) => {
-                    let mut lobbies = state.lobbies.lock().unwrap();
+                    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     let joincode = unique_joincode(&lobbies);
                     lobbies.insert(joincode.clone(), LobbyState::new(username));
                     Ok(Response::builder()
@@ -836,7 +852,7 @@ async fn handle_request(
             let joincode = header_value(&req, "joincode");
             match (username, joincode) {
                 (Some(username), Some(joincode)) => {
-                    let mut lobbies = state.lobbies.lock().unwrap();
+                    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get_mut(&joincode) {
                         Some(lobby) => {
                             if lobby.players.iter().any(|player| player == &username) {
@@ -863,7 +879,7 @@ async fn handle_request(
             let joincode = header_value(&req, "joincode");
             match (username, joincode) {
                 (Some(username), Some(joincode)) => {
-                    let mut lobbies = state.lobbies.lock().unwrap();
+                    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get_mut(&joincode) {
                         Some(lobby) => {
                             if let Some(index) =
@@ -891,7 +907,7 @@ async fn handle_request(
             let joincode = header_value(&req, "joincode");
             match joincode {
                 Some(joincode) => {
-                    let lobbies = state.lobbies.lock().unwrap();
+                    let lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get(&joincode) {
                         Some(lobby) => Ok(json_response(
                             StatusCode::OK,
@@ -910,19 +926,17 @@ async fn handle_request(
             let joincode = header_value(&req, "joincode");
             match joincode {
                 Some(joincode) => {
-                    let mut lobbies = state.lobbies.lock().unwrap();
+                    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.remove(&joincode) {
                         Some(lobby) => {
                             let mut game_state =
                                 GameState::new(joincode.clone(), lobby.players.clone());
                             game_state.chat_messages = lobby.chat_messages;
                             game_state.start_game();
-                            state
-                                .games
-                                .lock()
-                                .unwrap()
+                            lock_or_recover(&state.games, "games")
                                 .insert(joincode.clone(), game_state);
-                            state.started_games.lock().unwrap().insert(joincode.clone());
+                            lock_or_recover(&state.started_games, "started_games")
+                                .insert(joincode.clone());
                             Ok(text_response(StatusCode::OK, "Game Started"))
                         }
                         None => Ok(text_response(StatusCode::NOT_FOUND, "game does not exist")),
@@ -935,7 +949,8 @@ async fn handle_request(
             let joincode = header_value(&req, "joincode");
             match joincode {
                 Some(joincode) => {
-                    let started = state.started_games.lock().unwrap().contains(&joincode);
+                    let started =
+                        lock_or_recover(&state.started_games, "started_games").contains(&joincode);
                     Ok(text_response(
                         StatusCode::OK,
                         if started { "yes" } else { "no" },
@@ -948,7 +963,7 @@ async fn handle_request(
             let joincode: Option<String> = header_value(&req, "joincode");
             match joincode {
                 Some(joincode) => {
-                    let mut games = state.games.lock().unwrap();
+                    let mut games = lock_or_recover(&state.games, "games");
                     match games.get_mut(&joincode) {
                         Some(game) => {
                             game.next_turn();
@@ -969,7 +984,7 @@ async fn handle_request(
             let username: Option<String> = header_value(&req, "username");
             match joincode {
                 Some(joincode) => {
-                    let mut games = state.games.lock().unwrap();
+                    let mut games = lock_or_recover(&state.games, "games");
                     match games.get_mut(&joincode) {
                         Some(game) => {
                             let body = serde_json::to_string(&game_state_response_for_player(
@@ -1003,7 +1018,7 @@ async fn handle_request(
                     };
 
                     {
-                        let mut games = state.games.lock().unwrap();
+                        let mut games = lock_or_recover(&state.games, "games");
                         if let Some(game) = games.get_mut(&joincode) {
                             game.chat_messages.push(chat_message);
                             return Ok(text_response(StatusCode::OK, "sent"));
@@ -1011,7 +1026,7 @@ async fn handle_request(
                     }
 
                     {
-                        let mut lobbies = state.lobbies.lock().unwrap();
+                        let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                         if let Some(lobby) = lobbies.get_mut(&joincode) {
                             lobby.chat_messages.push(chat_message);
                             return Ok(text_response(StatusCode::OK, "sent"));
@@ -1032,7 +1047,7 @@ async fn handle_request(
             match joincode {
                 Some(joincode) => {
                     {
-                        let games = state.games.lock().unwrap();
+                        let games = lock_or_recover(&state.games, "games");
                         if let Some(game) = games.get(&joincode) {
                             let body = serde_json::to_string(&game.chat_messages).unwrap();
                             return Ok(json_response(StatusCode::OK, body));
@@ -1040,7 +1055,7 @@ async fn handle_request(
                     }
 
                     {
-                        let lobbies = state.lobbies.lock().unwrap();
+                        let lobbies = lock_or_recover(&state.lobbies, "lobbies");
                         if let Some(lobby) = lobbies.get(&joincode) {
                             let body = serde_json::to_string(&lobby.chat_messages).unwrap();
                             return Ok(json_response(StatusCode::OK, body));
@@ -1065,7 +1080,7 @@ async fn handle_request(
             let username = header_value(&req, "username");
             match (joincode, username) {
                 (Some(joincode), Some(username)) => {
-                    let mut games = state.games.lock().unwrap();
+                    let mut games = lock_or_recover(&state.games, "games");
                     match games.get_mut(&joincode) {
                         Some(game) => {
                             // Find the quitting player
