@@ -536,10 +536,11 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
         return text_response(StatusCode::BAD_REQUEST, "card cannot be played");
     }
 
+    let discard_pile_len_before_play = game.discard_pile.len();
     game.players[player_index].hand.remove(card_index);
     (card.play)(&card, game, player_index, req);
 
-    let mut discarded_cards = Vec::new();
+    let mut discarded_cards: Vec<Card> = game.discard_pile[discard_pile_len_before_play..].to_vec();
 
     match card.card_type {
         CardType::Shooting(_) => {

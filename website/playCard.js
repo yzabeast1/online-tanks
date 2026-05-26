@@ -245,8 +245,10 @@ function createDiscardDropdown(discardAction) {
 
     const myPlayer = gameData.players.find(p => p.name === username);
     if (myPlayer) {
+        const playedCard = deck.find(item => item.id === cardSelected);
         myPlayer.hand.forEach((card, index) => {
-            if (card && card.id != cardSelected) {
+            const canDiscardForPlayedCard = playedCard?.id !== 'new-model' || isShootingCard(card);
+            if (card && card.id != cardSelected && canDiscardForPlayedCard) {
                 const option = document.createElement('option');
                 option.value = `${index}:${card.id}`;
                 option.text = card.name;
@@ -257,6 +259,33 @@ function createDiscardDropdown(discardAction) {
 
     popupContent.appendChild(dropdown);
     popupContent.appendChild(document.createElement('br'))
+    syncDiscardDropdowns();
+}
+
+function syncDiscardDropdowns() {
+    const discardDropdowns = Array.from(document.querySelectorAll('[id^=discardDropdown_]'));
+    if (discardDropdowns.length < 2) return;
+
+    discardDropdowns.forEach(dropdown => {
+        dropdown.onchange = syncDiscardDropdowns;
+    });
+
+    discardDropdowns.forEach(dropdown => {
+        const selectedInOtherDropdowns = discardDropdowns
+            .filter(otherDropdown => otherDropdown !== dropdown)
+            .map(otherDropdown => otherDropdown.value);
+
+        Array.from(dropdown.options).forEach(option => {
+            option.disabled = selectedInOtherDropdowns.includes(option.value);
+        });
+
+        if (dropdown.selectedOptions[0]?.disabled) {
+            const replacement = Array.from(dropdown.options).find(option => !option.disabled);
+            if (replacement) {
+                dropdown.value = replacement.value;
+            }
+        }
+    });
 }
 function showPopup() {
     const modal = document.getElementById('popupModal');
@@ -279,6 +308,9 @@ function sendPlayedCardToServer() {
     const selectedPlayer = document.getElementById('playerDropdown')?.value;
     const discardOptions = Array.from(document.querySelectorAll('[id^=discardDropdown_]'))
         .map(dropdown => dropdown.value);
+    if (new Set(discardOptions).size !== discardOptions.length) {
+        return;
+    }
     const queuedCard = document.getElementById('queuedCardDropdown')?.value
     const firingFilterType = document.getElementById('firingFilterTypeDropdown')?.value
     console.log('Target:', selectedPlayer || 'No player selected');
