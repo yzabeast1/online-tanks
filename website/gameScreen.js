@@ -172,8 +172,7 @@ function renderGame() {
 
                             cardDiv.appendChild(img);
 
-                            // Add click event to zoom in on card
-                            cardDiv.addEventListener('click', () => openModal(img.src, card));
+                            cardDiv.addEventListener('click', () => handleHandCardClick(card, cardDiv));
 
                             handDiv.appendChild(cardDiv);
                         });
@@ -204,40 +203,7 @@ function openModal(imageSrc, card) {
     cardSelected = card.id;
     modalImage.src = imageSrc;
     modal.style.display = 'flex';
-
-    let isShooting = typeof card.card_type === 'object' && card.card_type !== null && card.card_type.hasOwnProperty('Shooting');
-    let isEvent = card.card_type === 'Event';
-    
-    let distractorMissilePlayed = renderedData.turn_state.distractor_missile_played || 0;
-    let maxShooting = distractorMissilePlayed > 0
-        ? renderedData.turn_state.more_ammo_played
-        : 1 + renderedData.turn_state.more_ammo_played;
-    let isDistractorMissile = card.id === 'distractor-missile';
-    let shootingAllowed = renderedData.active_cards.no_shooting_played_by === -1 || renderedData.players[renderedData.active_cards.no_shooting_played_by].name === username;
-    let isMyTurn = renderedData.players[renderedData.current_turn_player]?.name === username;
-    let hasQueuedDistractorTarget = renderedData.active_cards.active_calculated_shootings.some(s => s.owner !== username);
-
-    if (!isMyTurn) {
-        document.getElementById('play-card').style.display = 'none';
-    }
-    else if (isShooting && cardNeedsTarget(card) && !hasValidTargetsForCard(card)) {
-        document.getElementById('play-card').style.display = 'none';
-    }
-    else if (isDistractorMissile && (!shootingAllowed || !hasQueuedDistractorTarget || renderedData.turn_state.shooting_card_played > renderedData.turn_state.more_ammo_played)) {
-        document.getElementById('play-card').style.display = 'none';
-    }
-    else if (isShooting && !isDistractorMissile && (!shootingAllowed || renderedData.turn_state.shooting_card_played >= maxShooting)) {
-        document.getElementById('play-card').style.display = 'none';
-    }
-    else if (isEvent && renderedData.turn_state.event_card_played) {
-        document.getElementById('play-card').style.display = 'none';
-    }
-    else if (['nuke', 'lottery'].includes(card.id) && renderedData.turn_state.total_cards_played > 0) {
-        document.getElementById('play-card').style.display = 'none';
-    }
-    else {
-        document.getElementById('play-card').style.display = 'block';
-    }
+    document.getElementById('play-card').style.display = canPlayCardNow(card) ? 'block' : 'none';
 }
 
 // Close modal

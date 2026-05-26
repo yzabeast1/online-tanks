@@ -36,6 +36,53 @@ function hasValidTargetsForCard(card) {
     return validTargetsForCard(card).length > 0;
 }
 
+function canPlayCardNow(card) {
+    if (!card || !renderedData.players) return false;
+
+    const isShooting = isShootingCard(card);
+    const isEvent = card.card_type === 'Event';
+    const isDistractorMissile = card.id === 'distractor-missile';
+    const distractorMissilePlayed = renderedData.turn_state.distractor_missile_played || 0;
+    const maxShooting = distractorMissilePlayed > 0
+        ? renderedData.turn_state.more_ammo_played
+        : 1 + renderedData.turn_state.more_ammo_played;
+    const shootingAllowed = renderedData.active_cards.no_shooting_played_by === -1 || renderedData.players[renderedData.active_cards.no_shooting_played_by].name === username;
+    const isMyTurn = renderedData.players[renderedData.current_turn_player]?.name === username;
+    const hasQueuedDistractorTarget = renderedData.active_cards.active_calculated_shootings.some(s => s.owner !== username);
+
+    if (!isMyTurn) return false;
+    if (cardNeedsTarget(card) && !hasValidTargetsForCard(card)) return false;
+    if (isDistractorMissile && (!shootingAllowed || !hasQueuedDistractorTarget || renderedData.turn_state.shooting_card_played > renderedData.turn_state.more_ammo_played)) return false;
+    if (isShooting && !isDistractorMissile && (!shootingAllowed || renderedData.turn_state.shooting_card_played >= maxShooting)) return false;
+    if (isEvent && renderedData.turn_state.event_card_played) return false;
+    if (['nuke', 'lottery'].includes(card.id) && renderedData.turn_state.total_cards_played > 0) return false;
+
+    return true;
+}
+
+function actionsForCard(card) {
+    let actions = [];
+
+    if (cardNeedsTarget(card)) {
+        actions.push('target');
+    }
+    if (card.id === 'new-model') {
+        actions.push('discardcard');
+        actions.push('discardcardtwo');
+    }
+    if (card.id === 'firing-filter') {
+        actions.push('firing_filter_type');
+    }
+    if (card.id === 'distractor-missile') {
+        actions.push('queuedcard');
+    }
+    if (card.id === 'helpful-hand') {
+        actions.push('discardcard');
+    }
+
+    return actions;
+}
+
 function validQueuedCardsForDistractorMissile() {
     return gameData.active_cards.active_calculated_shootings.filter(s => s.owner !== username);
 }
@@ -56,30 +103,54 @@ function playCard() {
     let deckCard = deck.find(item => item.id === card);
     let actions = [];
     if (deckCard) {
-        if (cardNeedsTarget(deckCard) && !hasValidTargetsForCard(deckCard)) {
+        if (!canPlayCardNow(deckCard)) {
             document.getElementById('playCardBtn').style.display = 'none'
         }
         if (deckCard.id === 'distractor-missile' && validQueuedCardsForDistractorMissile().length === 0) {
             document.getElementById('playCardBtn').style.display = 'none'
         }
-        if (cardNeedsTarget(deckCard)) {
-            actions.push('target');
-        }
-        if (deckCard.id === 'new-model') {
-            actions.push('discardcard');
-            actions.push('discardcardtwo');
-        }
-        if (deckCard.id === 'firing-filter') {
-            actions.push('firing_filter_type');
-        }
-        if (deckCard.id === 'distractor-missile') {
-            actions.push('queuedcard');
-        }
-        if(deckCard.id === 'helpful-hand') {
-            actions.push('discardcard');
-        }
+        actions = actionsForCard(deckCard);
     }
     triggerActions(actions);
+}
+
+function clearInlineCardMenus() {
+    document.querySelectorAll('.inline-target-menu').forEach(menu => menu.remove());
+}
+
+function handleHandCardClick(card, cardElement) {
+    if (!canPlayCardNow(card)) return;
+
+    cardSelected = card.id;
+    clearInlineCardMenus();
+
+    const actions = actionsForCard(card);
+    if (actions.length === 0) {
+        sendPlayedCardHeaders({});
+        return;
+    }
+
+    if (actions.length === 1 && actions[0] === 'target') {
+        const menu = document.createElement('div');
+        menu.classList.add('inline-target-menu');
+
+        validTargetsForCard(card).forEach(player => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.innerText = player.name;
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                sendPlayedCardHeaders({ target: player.name });
+                clearInlineCardMenus();
+            });
+            menu.appendChild(button);
+        });
+
+        cardElement.appendChild(menu);
+        return;
+    }
+
+    playCard();
 }
 function triggerActions(actions) {
     const popupContent = document.getElementById('popupContent');
@@ -222,6 +293,16 @@ function sendPlayedCardToServer() {
     if (discardOptions[1]) headers['discardcardtwo'] = discardOptions[1]
     if (queuedCard) headers['queuedcard'] = queuedCard
     if (firingFilterType) headers['firing_filter_type'] = firingFilterType
+    sendPlayedCardHeaders(headers);
+}
+
+function sendPlayedCardHeaders(extraHeaders) {
+    var headers = {
+        joincode: joincode,
+        username: username,
+        cardid: cardSelected,
+        ...extraHeaders
+    }
     console.log(headers)
     postWithFallback(`https://${serverip}/playcard`, headers)
     // You can now process the selected player and discard options here

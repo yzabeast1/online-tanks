@@ -416,7 +416,51 @@ label[for="show-deck-checkbox"] {
 
 .my-hand.card,
 .my-hand .card {
+    position: relative;
+    overflow: visible;
     background: #272417;
+}
+
+.my-hand.card:hover,
+.my-hand .card:hover {
+    z-index: 30;
+}
+
+.my-hand.card img,
+.my-hand .card img {
+    border-radius: 8px;
+    transition: transform 180ms ease 700ms, box-shadow 180ms ease 700ms;
+}
+
+.my-hand.card:hover img,
+.my-hand .card:hover img {
+    transform: scale(1.65);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.46);
+}
+
+.inline-target-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 40;
+    width: max-content;
+    min-width: 100%;
+    max-width: 220px;
+    padding: 6px;
+    border: 1px solid rgba(244, 239, 224, 0.18);
+    border-radius: 8px;
+    display: grid;
+    gap: 6px;
+    background: rgba(18, 22, 16, 0.98);
+    box-shadow: 0 16px 28px rgba(0, 0, 0, 0.38);
+}
+
+.inline-target-menu button {
+    width: 100%;
+    min-height: 36px;
+    padding: 7px 10px;
+    text-align: left;
+    box-shadow: none;
 }
 
 img {
