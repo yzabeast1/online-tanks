@@ -42,6 +42,7 @@ function canPlayCardNow(card) {
     const isShooting = isShootingCard(card);
     const isEvent = card.card_type === 'Event';
     const isDistractorMissile = card.id === 'distractor-missile';
+    const isColdWar = card.id === 'cold-war';
     const distractorMissilePlayed = renderedData.turn_state.distractor_missile_played || 0;
     const maxShooting = distractorMissilePlayed > 0
         ? renderedData.turn_state.more_ammo_played
@@ -53,6 +54,7 @@ function canPlayCardNow(card) {
     if (!isMyTurn) return false;
     if (cardNeedsTarget(card) && !hasValidTargetsForCard(card)) return false;
     if (isDistractorMissile && (renderedData.turn_state.shooting_locked || !shootingAllowed || !hasQueuedDistractorTarget || renderedData.turn_state.shooting_card_played > renderedData.turn_state.more_ammo_played)) return false;
+    if (isColdWar && renderedData.active_cards.active_calculated_shootings.length === 0) return false;
     if (isShooting && !isDistractorMissile && (renderedData.turn_state.shooting_locked || !shootingAllowed || renderedData.turn_state.shooting_card_played >= maxShooting)) return false;
     if (card.id === 'more-ammo' && renderedData.turn_state.shooting_locked) return false;
     if (isEvent && renderedData.turn_state.event_card_played) return false;
@@ -74,7 +76,7 @@ function actionsForCard(card) {
     if (card.id === 'firing-filter') {
         actions.push('firing_filter_type');
     }
-    if (card.id === 'distractor-missile') {
+    if (card.id === 'distractor-missile' || card.id === 'cold-war') {
         actions.push('queuedcard');
     }
     if (card.id === 'helpful-hand') {
@@ -87,6 +89,11 @@ function actionsForCard(card) {
 function validQueuedCardsForDistractorMissile() {
     return gameData.active_cards.active_calculated_shootings
         .filter(s => s.owner !== username && !firingFilterBlocksTarget({ card_type: { Shooting: 'Quick' } }, s.owner));
+}
+
+function validQueuedCardsForColdWar() {
+    return gameData.active_cards.active_calculated_shootings
+        .filter(s => s.owner !== username || s.turns_remaining > 0);
 }
 
 function playCard() {
@@ -109,6 +116,9 @@ function playCard() {
             document.getElementById('playCardBtn').style.display = 'none'
         }
         if (deckCard.id === 'distractor-missile' && validQueuedCardsForDistractorMissile().length === 0) {
+            document.getElementById('playCardBtn').style.display = 'none'
+        }
+        if (deckCard.id === 'cold-war' && validQueuedCardsForColdWar().length === 0) {
             document.getElementById('playCardBtn').style.display = 'none'
         }
         actions = actionsForCard(deckCard);
@@ -182,7 +192,12 @@ function createQueuedCardDropdown(username) {
     dropdown.id = `queuedCardDropdown`;
     dropdown.innerHTML = '';  // Clear any existing options
 
-    validQueuedCardsForDistractorMissile()
+    const selectedCard = deck.find(item => item.id === cardSelected);
+    const queuedCards = selectedCard?.id === 'cold-war'
+        ? validQueuedCardsForColdWar()
+        : validQueuedCardsForDistractorMissile();
+
+    queuedCards
         .forEach(s => {
             const option = document.createElement('option');
             const index = gameData.active_cards.active_calculated_shootings.indexOf(s);

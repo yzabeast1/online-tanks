@@ -49,14 +49,14 @@ pub fn all_cards() -> Vec<Card> {
         //     play: stub_play,
         //     count: 5,
         // },
-        // Card {
-        //     name: "Cold War".to_string(),
-        //     id: "cold-war".to_string(),
-        //     card_type: CardType::Support,
-        //     can_be_played: can_play_cold_war,
-        //     play: stub_play,
-        //     count: 3,
-        // },
+        Card {
+            name: "Cold War".to_string(),
+            id: "cold-war".to_string(),
+            card_type: CardType::Support,
+            can_be_played: can_play_cold_war,
+            play: play_cold_war,
+            count: 3,
+        },
         Card {
             name: "Last Stand".to_string(),
             id: "last-stand".to_string(),
@@ -320,15 +320,33 @@ fn can_play_radar(_: &Card, _: &GameState, _: &Request<Body>) -> bool {
     return true;
 }
 
-fn can_play_cold_war(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool {
-    if game_state
+fn selected_any_active_calculated_shooting_index(
+    req: &Request<Body>,
+    game_state: &GameState,
+) -> Option<usize> {
+    let value = header_value(req, "queuedcard")?;
+    if let Some((index, card_id)) = value.split_once(':') {
+        let index = index.parse::<usize>().ok()?;
+        if game_state
+            .active_cards
+            .active_calculated_shootings
+            .get(index)
+            .is_some_and(|shooting| shooting.card_played.id == card_id)
+        {
+            return Some(index);
+        }
+        return None;
+    }
+
+    game_state
         .active_cards
         .active_calculated_shootings
-        .is_empty()
-    {
-        return false;
-    }
-    return true;
+        .iter()
+        .position(|shooting| shooting.card_played.id == value)
+}
+
+fn can_play_cold_war(_: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
+    selected_any_active_calculated_shooting_index(req, game_state).is_some()
 }
 
 fn can_play_nuke(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
@@ -420,25 +438,7 @@ fn can_play_quick_shooting(_: &Card, game_state: &GameState, req: &Request<Body>
     return can_play_shooting(game_state);
 }
 
-fn can_play_calculated_shooting(_: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
-    let headers = req.headers();
-    let target_player_name = headers.get("target").and_then(|value| value.to_str().ok());
-
-    let Some(target_name) = target_player_name else {
-        return false;
-    };
-
-    if game_state.player_by_name(target_name).is_none() {
-        return false;
-    };
-
-    for active_filter in &game_state.active_cards.active_firing_filters {
-        if active_filter.owner == target_name
-            && active_filter.filter_type == ShootingType::Calculated
-        {
-            return false;
-        }
-    }
+fn can_play_calculated_shooting(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool {
     return can_play_shooting(game_state);
 }
 
@@ -711,6 +711,33 @@ fn play_painful_draw(_: &Card, game_state: &mut GameState, player_index: usize, 
 }
 fn play_more_ammo(_: &Card, game_state: &mut GameState, _: usize, _: &Request<Body>) {
     game_state.turn_state.more_ammo_played += 1;
+}
+fn play_cold_war(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
+    let current_player_name = game_state.players[player_index].name.clone();
+    let Some(shooting_index) = selected_any_active_calculated_shooting_index(req, game_state)
+    else {
+        return;
+    };
+
+    let (shooting_owner, shooting_card_name, turns_remaining) = {
+        let shooting = &mut game_state.active_cards.active_calculated_shootings[shooting_index];
+        if shooting.owner == current_player_name {
+            shooting.turns_remaining = shooting.turns_remaining.saturating_sub(1);
+        } else {
+            shooting.turns_remaining += 1;
+        }
+
+        (
+            shooting.owner.clone(),
+            shooting.card_played.name.clone(),
+            shooting.turns_remaining,
+        )
+    };
+
+    game_state.push_server_chat_message(format!(
+        "{} changed {}'s {} countdown to {}",
+        current_player_name, shooting_owner, shooting_card_name, turns_remaining
+    ));
 }
 fn play_distractor_missile(
     _: &Card,

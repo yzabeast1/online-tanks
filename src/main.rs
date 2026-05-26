@@ -505,6 +505,63 @@ fn blocking_firing_filter(
     ))
 }
 
+fn calculated_activation_targets(
+    active: &ActiveCalculatedShooting,
+    req: &Request<Body>,
+) -> Vec<String> {
+    if active.card_played.id == "decision-missile"
+        && header_value(req, "decision_action").as_deref() == Some("draw")
+    {
+        return Vec::new();
+    }
+
+    if active.card_played.id == "multi-strike" {
+        let Some(raw_allocations) = header_value(req, "multistrike_allocations") else {
+            return Vec::new();
+        };
+        let Ok(allocations) = serde_json::from_str::<Vec<serde_json::Value>>(&raw_allocations)
+        else {
+            return Vec::new();
+        };
+
+        return allocations
+            .into_iter()
+            .filter(|allocation| {
+                allocation
+                    .get("damage")
+                    .and_then(|damage| damage.as_i64())
+                    .is_some_and(|damage| damage > 0)
+            })
+            .filter_map(|allocation| {
+                allocation
+                    .get("target")
+                    .and_then(|target| target.as_str())
+                    .map(str::to_string)
+            })
+            .collect();
+    }
+
+    header_value(req, "target").into_iter().collect()
+}
+
+fn blocking_calculated_activation_filter(
+    game: &GameState,
+    active: &ActiveCalculatedShooting,
+    req: &Request<Body>,
+) -> Option<(String, String)> {
+    calculated_activation_targets(active, req)
+        .into_iter()
+        .find_map(|target| {
+            game.active_cards
+                .active_firing_filters
+                .iter()
+                .find(|filter| {
+                    filter.owner == target && filter.filter_type == ShootingType::Calculated
+                })
+                .map(|filter| (filter.owner.clone(), filter.card_played.name.clone()))
+        })
+}
+
 fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response<Body> {
     let joincode = header_value(req, "joincode");
     let username = header_value(req, "username");
@@ -685,6 +742,20 @@ fn activate_calculated_shooting_response(
         .active_calculated_shootings
         .remove(active_index);
     let activated_card_id = active.card_played.id.clone();
+    if let Some((filter_owner, blocking_filter_name)) =
+        blocking_calculated_activation_filter(game, &active, req)
+    {
+        game.push_server_chat_message(format!(
+            "{}'s {} blocked {}'s {}",
+            filter_owner, blocking_filter_name, username, active.card_played.name
+        ));
+        game.discard_pile.push(active.card_played);
+        return json_response(
+            StatusCode::OK,
+            serde_json::to_string(&serde_json::json!({"status": "blocked"})).unwrap(),
+        );
+    }
+
     (active.when_done)(game, &active, req);
     if activated_card_id == "multi-strike" {
         game.turn_state.shooting_locked = true;
