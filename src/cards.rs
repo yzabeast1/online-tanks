@@ -379,7 +379,19 @@ fn selected_active_calculated_shooting_index(
 fn can_play_distractor_missile(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
     let current_player_name = &game_state.players[game_state.current_turn_player].name;
 
-    if selected_active_calculated_shooting_index(req, game_state, current_player_name).is_none() {
+    let Some(shooting_index) =
+        selected_active_calculated_shooting_index(req, game_state, current_player_name)
+    else {
+        return false;
+    };
+
+    let shooting = &game_state.active_cards.active_calculated_shootings[shooting_index];
+    if game_state
+        .active_cards
+        .active_firing_filters
+        .iter()
+        .any(|filter| filter.owner == shooting.owner && filter.filter_type == ShootingType::Quick)
+    {
         return false;
     }
 
@@ -861,7 +873,9 @@ fn multi_strike_when_done(
     let mut unique_targets = std::collections::HashSet::new();
     for allocation in &allocations {
         if !unique_targets.insert(allocation.target.as_str())
-            || game_state.player_index_from_name(&allocation.target).is_none()
+            || game_state
+                .player_index_from_name(&allocation.target)
+                .is_none()
         {
             return;
         }

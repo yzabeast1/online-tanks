@@ -450,9 +450,30 @@ fn blocking_firing_filter(
     let Some(filter_type) = card.card_type.shooting_type() else {
         return None;
     };
-    let Some(target) = header_value(req, "target") else {
-        return None;
+
+    let target = if card.id == "distractor-missile" {
+        let queued_card = header_value(req, "queuedcard")?;
+        let queued_card_id = queued_card
+            .split_once(':')
+            .map(|(_, card_id)| card_id)
+            .unwrap_or(queued_card.as_str());
+        let selected_shooting = queued_card
+            .split_once(':')
+            .and_then(|(index, _)| index.parse::<usize>().ok())
+            .and_then(|index| game.active_cards.active_calculated_shootings.get(index))
+            .filter(|shooting| shooting.card_played.id == queued_card_id)
+            .or_else(|| {
+                game.active_cards
+                    .active_calculated_shootings
+                    .iter()
+                    .find(|shooting| shooting.card_played.id == queued_card_id)
+            })?;
+
+        selected_shooting.owner.clone()
+    } else {
+        header_value(req, "target")?
     };
+
     let Some(active_filter) = game
         .active_cards
         .active_firing_filters

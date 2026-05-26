@@ -48,7 +48,7 @@ function canPlayCardNow(card) {
         : 1 + renderedData.turn_state.more_ammo_played;
     const shootingAllowed = renderedData.active_cards.no_shooting_played_by === -1 || renderedData.players[renderedData.active_cards.no_shooting_played_by].name === username;
     const isMyTurn = renderedData.players[renderedData.current_turn_player]?.name === username;
-    const hasQueuedDistractorTarget = renderedData.active_cards.active_calculated_shootings.some(s => s.owner !== username);
+    const hasQueuedDistractorTarget = validQueuedCardsForDistractorMissile().length > 0;
 
     if (!isMyTurn) return false;
     if (cardNeedsTarget(card) && !hasValidTargetsForCard(card)) return false;
@@ -85,7 +85,8 @@ function actionsForCard(card) {
 }
 
 function validQueuedCardsForDistractorMissile() {
-    return gameData.active_cards.active_calculated_shootings.filter(s => s.owner !== username);
+    return gameData.active_cards.active_calculated_shootings
+        .filter(s => s.owner !== username && !firingFilterBlocksTarget({ card_type: { Shooting: 'Quick' } }, s.owner));
 }
 
 function playCard() {
@@ -181,10 +182,10 @@ function createQueuedCardDropdown(username) {
     dropdown.id = `queuedCardDropdown`;
     dropdown.innerHTML = '';  // Clear any existing options
 
-    gameData.active_cards.active_calculated_shootings
-        .forEach((s, index) => {
-            if (s.owner === username) return;
+    validQueuedCardsForDistractorMissile()
+        .forEach(s => {
             const option = document.createElement('option');
+            const index = gameData.active_cards.active_calculated_shootings.indexOf(s);
             option.value = `${index}:${s.card_played.id}`;
             option.text = `${s.owner}'s ${s.card_played.name} with countdown ${s.turns_remaining}`;
             dropdown.appendChild(option);
