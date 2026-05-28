@@ -142,7 +142,7 @@ function lobbyPlayers() {
                 });
                 const fallbackHost = typeof data[0] === 'string' ? data[0] : data[0].name;
                 const isHostUsername = (hostUsername || fallbackHost) === username;
-                setStartGameVisible(isHostUsername && !spectating);
+                setStartGameVisible(isHostUsername && data.length >= 2 && !spectating);
             } else {
                 console.warn('No messages found for this joincode.');
                 setStartGameVisible(false);

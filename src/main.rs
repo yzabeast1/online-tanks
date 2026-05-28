@@ -1177,7 +1177,10 @@ async fn handle_request(
                                             .iter()
                                             .map(|player| MyGamePlayerResponse {
                                                 name: player.name.clone(),
-                                                picture: game.shoo_pictures.get(&player.name).cloned(),
+                                                picture: game
+                                                    .shoo_pictures
+                                                    .get(&player.name)
+                                                    .cloned(),
                                             })
                                             .collect(),
                                         current_turn_player: game
@@ -1274,8 +1277,13 @@ async fn handle_request(
             match joincode {
                 Some(joincode) => {
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
-                    match lobbies.remove(&joincode) {
-                        Some(lobby) => {
+                    match lobbies.get(&joincode) {
+                        Some(lobby) if lobby.players.len() < 2 => Ok(text_response(
+                            StatusCode::BAD_REQUEST,
+                            "game requires at least 2 players",
+                        )),
+                        Some(_) => {
+                            let lobby = lobbies.remove(&joincode).unwrap();
                             let mut game_state = GameState::new(
                                 joincode.clone(),
                                 lobby.players.clone(),

@@ -256,7 +256,11 @@ document.addEventListener('keydown', (event) => {
 });
 function startGame() {
     postWithFallbackNoJSON(`https://${serverip}/startGame`, { joincode: joincode })
-    joinStartedGame();
+        .then(response => {
+            if (response && response.ok) {
+                joinStartedGame();
+            }
+        });
 }
 function joinStartedGame() {
     document.querySelector('.lobby-screen').style.display = 'none'

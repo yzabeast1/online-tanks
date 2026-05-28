@@ -28,7 +28,7 @@ function postWithFallback(url, headers) {
 function postWithFallbackNoJSON(url, headers) {
 
     // Try sending the message using HTTPS
-    fetch(url, {
+    return fetch(url, {
         method: 'POST',
         headers: headers
     })
