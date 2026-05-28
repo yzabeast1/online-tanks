@@ -1215,10 +1215,23 @@ async fn handle_request(
                 Some(joincode) => {
                     let lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get(&joincode) {
-                        Some(lobby) => Ok(json_response(
-                            StatusCode::OK,
-                            serde_json::to_string(&lobby.players).unwrap(),
-                        )),
+                        Some(lobby) => {
+                            let host = lobby.players.first().cloned().unwrap_or_default();
+                            let host_shoo_user_id =
+                                lobby.shoo_identities.get(&host).cloned().unwrap_or_default();
+                            Ok(Response::builder()
+                                .status(StatusCode::OK)
+                                .header("content-type", "application/json")
+                                .header("access-control-allow-origin", "*")
+                                .header(
+                                    "access-control-expose-headers",
+                                    "host-username, host-shoo-user-id",
+                                )
+                                .header("host-username", host)
+                                .header("host-shoo-user-id", host_shoo_user_id)
+                                .body(Body::from(serde_json::to_string(&lobby.players).unwrap()))
+                                .unwrap())
+                        }
                         None => Ok(text_response(
                             StatusCode::NOT_FOUND,
                             "lobby not found for the given joincode",

@@ -8,6 +8,9 @@ var lobbyPlayersInterval = 0
 var lobbyStartedCheckCoooldown = 1000
 var lobbyStartedCheckInterval = 0;
 var serverip = 'yzabeast1.run.place:444'
+function setStartGameVisible(isVisible) {
+    document.querySelector('.start-game').style.display = isVisible ? 'inline-block' : 'none';
+}
 function startSpectating() {
     spectating = true
     username = document.getElementById('username-input').value;
@@ -23,7 +26,7 @@ function startSpectating() {
     document.querySelector('.menu-screen').style.display = 'none'
     document.querySelector('.lobby-screen').style.display = 'block'
     document.querySelector('.container').style.display = 'flex'
-    document.querySelector('.start-game').style.display = 'none'
+    setStartGameVisible(false)
     document.getElementById('lobby-show-code').innerHTML = "JoinCode: " + joincode
     lobbyPlayersInterval = setInterval(lobbyPlayers, playersInLobbyCooldown);
     lobbyStartedCheckInterval = setInterval(lobbyStartedCheck, lobbyStartedCheckCoooldown)
@@ -31,6 +34,7 @@ function startSpectating() {
     startChat();
 }
 async function joinLobby() {
+    spectating = false
     const account = shooAccountDetails();
     if (account) {
         shooAccount = account;
@@ -51,7 +55,7 @@ async function joinLobby() {
     document.querySelector('.menu-screen').style.display = 'none'
     document.querySelector('.lobby-screen').style.display = 'block'
     document.querySelector('.container').style.display = 'flex'
-    document.querySelector('.start-game').style.display = 'none'
+    setStartGameVisible(false)
     const headers = {
         'Content-Type': 'application/json',
         'username': username,
@@ -77,6 +81,7 @@ async function joinLobby() {
     startChat();
 }
 async function newGame() {
+    spectating = false
     const account = shooAccountDetails();
     if (account) {
         shooAccount = account;
@@ -92,6 +97,7 @@ async function newGame() {
     document.querySelector('.menu-screen').style.display = 'none'
     document.querySelector('.lobby-screen').style.display = 'block'
     document.querySelector('.container').style.display = 'flex'
+    setStartGameVisible(true)
     const headers = {
         'Content-Type': 'application/json',
         'username': username,
@@ -120,16 +126,27 @@ async function newGame() {
         });
 }
 function lobbyPlayers() {
+    const account = shooAccountDetails();
     const headers = { 'joincode': joincode }; // Add joincode header
-    fetchWithFallback(`https://${serverip}/lobbyState`, headers)
-        .then(data => {
+    fetch(`https://${serverip}/lobbyState`, { headers })
+        .then(response => {
+            if (!response.ok) throw new Error('HTTPS failed');
+            const hostUsername = response.headers.get('host-username');
+            const hostShooUserId = response.headers.get('host-shoo-user-id');
+            return response.json().then(data => ({ data, hostUsername, hostShooUserId }));
+        })
+        .then(({ data, hostUsername, hostShooUserId }) => {
             if (data && data.length > 0) {
                 clearLobbyPlayers();
                 data.forEach(player => {
                     addLobbyPlayer(player, 'server-message');
                 });
+                const isHostUsername = (hostUsername || data[0]) === username;
+                const isHostAccount = account && hostShooUserId && hostShooUserId === account.userId;
+                setStartGameVisible((isHostUsername || isHostAccount) && !spectating);
             } else {
                 console.warn('No messages found for this joincode.');
+                setStartGameVisible(false);
             }
         })
         .catch(error => {
