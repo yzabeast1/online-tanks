@@ -114,9 +114,21 @@ function renderGame() {
                         playerDiv.classList.add('opponent-player');
                     }
 
+                    const playerHeader = document.createElement('div');
+                    playerHeader.classList.add('player-header');
+
+                    if (playerData.picture) {
+                        const playerPicture = document.createElement('img');
+                        playerPicture.classList.add('player-picture');
+                        playerPicture.src = playerData.picture;
+                        playerPicture.alt = `${playerData.name}'s profile picture`;
+                        playerHeader.appendChild(playerPicture);
+                    }
+
                     const healthText = document.createElement('p');
                     healthText.innerText = `${playerData.name}'s Health: ${playerData.health}`;
-                    playerDiv.appendChild(healthText);
+                    playerHeader.appendChild(healthText);
+                    playerDiv.appendChild(playerHeader);
 
                     let playerQueuedCards = gameData.active_cards.active_calculated_shootings.filter(s => s.owner === playerData.name);
                     if (playerQueuedCards.length > 0) {

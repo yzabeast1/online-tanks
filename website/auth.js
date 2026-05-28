@@ -69,6 +69,7 @@ function shooHeaders(account) {
     return {
         shoo_user_id: account.userId,
         shoo_token: account.token || '',
+        shoo_picture: account.picture || '',
     };
 }
 

@@ -394,8 +394,25 @@ label[for="show-deck-checkbox"] {
     margin-bottom: 0;
 }
 
-.player > p {
-    margin: 0 0 12px;
+.player-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.player-picture {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(244, 239, 224, 0.08);
+}
+
+.player-header > p {
+    margin: 0;
     color: var(--text);
     font-size: 17px;
     font-weight: 800;

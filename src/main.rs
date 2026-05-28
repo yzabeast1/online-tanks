@@ -813,6 +813,7 @@ struct MyGameResponse {
 #[derive(Serialize)]
 struct PlayerResponse<'a> {
     name: &'a str,
+    picture: Option<&'a str>,
     hand: &'a [Card],
     hand_count: usize,
     health: isize,
@@ -827,6 +828,10 @@ fn game_state_response_for_player<'a>(
         .iter()
         .map(|player| PlayerResponse {
             name: &player.name,
+            picture: game
+                .shoo_pictures
+                .get(&player.name)
+                .map(|picture| picture.as_str()),
             hand: if Some(player.name.as_str()) == username {
                 &player.hand
             } else {
@@ -912,11 +917,15 @@ async fn handle_request(
         (&Method::POST, "/createGame") => {
             let username = header_value(&req, "username");
             let shoo_user_id = header_value(&req, "shoo_user_id");
+            let shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
             match (username, shoo_user_id) {
                 (Some(username), Some(shoo_user_id)) => {
                     let joincode = unique_joincode_for_state(&state);
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
-                    lobbies.insert(joincode.clone(), LobbyState::new(username, shoo_user_id));
+                    lobbies.insert(
+                        joincode.clone(),
+                        LobbyState::new(username, shoo_user_id, shoo_picture),
+                    );
                     Ok(Response::builder()
                         .status(StatusCode::OK)
                         .header("content-type", "text/plain; charset=utf-8")
@@ -936,6 +945,7 @@ async fn handle_request(
             let username = header_value(&req, "username");
             let joincode = header_value(&req, "joincode");
             let shoo_user_id = header_value(&req, "shoo_user_id");
+            let shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
             match (username, joincode, shoo_user_id) {
                 (Some(username), Some(joincode), Some(shoo_user_id)) => {
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
@@ -948,7 +958,10 @@ async fn handle_request(
                                 ))
                             } else {
                                 lobby.players.push(username.clone());
-                                lobby.shoo_identities.insert(username, shoo_user_id);
+                                lobby.shoo_identities.insert(username.clone(), shoo_user_id);
+                                if !shoo_picture.is_empty() {
+                                    lobby.shoo_pictures.insert(username, shoo_picture);
+                                }
                                 Ok(text_response(StatusCode::OK, "joined game lobby"))
                             }
                         }
@@ -1021,6 +1034,7 @@ async fn handle_request(
                             {
                                 lobby.players.remove(index);
                                 lobby.shoo_identities.remove(&username);
+                                lobby.shoo_pictures.remove(&username);
                                 if lobby.players.is_empty() {
                                     lobbies.remove(&joincode);
                                 }
@@ -1068,6 +1082,7 @@ async fn handle_request(
                                 joincode.clone(),
                                 lobby.players.clone(),
                                 lobby.shoo_identities,
+                                lobby.shoo_pictures,
                             );
                             game_state.chat_messages = lobby.chat_messages;
                             game_state.start_game();
@@ -1230,6 +1245,7 @@ async fn handle_request(
                                     games.remove(&joincode);
                                 } else {
                                     game.shoo_identities.remove(&username);
+                                    game.shoo_pictures.remove(&username);
                                 }
 
                                 return Ok(text_response(StatusCode::OK, "quit"));
