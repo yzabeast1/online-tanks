@@ -207,7 +207,7 @@ function leaveLobby() {
         .then(response => {
             if (!response.ok) throw new Error('HTTPS failed'); // Handle HTTP errors
             else {
-                document.querySelector('.menu-screen').style.display = 'block'
+                document.querySelector('.menu-screen').style.display = 'flex'
                 document.querySelector('.lobby-screen').style.display = 'none'
                 document.getElementById('joincode-input').value = ''
                 clearInterval(lobbyPlayersInterval)
