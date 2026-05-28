@@ -132,18 +132,17 @@ function lobbyPlayers() {
         .then(response => {
             if (!response.ok) throw new Error('HTTPS failed');
             const hostUsername = response.headers.get('host-username');
-            const hostShooUserId = response.headers.get('host-shoo-user-id');
-            return response.json().then(data => ({ data, hostUsername, hostShooUserId }));
+            return response.json().then(data => ({ data, hostUsername }));
         })
-        .then(({ data, hostUsername, hostShooUserId }) => {
+        .then(({ data, hostUsername }) => {
             if (data && data.length > 0) {
                 clearLobbyPlayers();
                 data.forEach(player => {
                     addLobbyPlayer(player, 'server-message');
                 });
-                const isHostUsername = (hostUsername || data[0]) === username;
-                const isHostAccount = account && hostShooUserId && hostShooUserId === account.userId;
-                setStartGameVisible((isHostUsername || isHostAccount) && !spectating);
+                const fallbackHost = typeof data[0] === 'string' ? data[0] : data[0].name;
+                const isHostUsername = (hostUsername || fallbackHost) === username;
+                setStartGameVisible(isHostUsername && !spectating);
             } else {
                 console.warn('No messages found for this joincode.');
                 setStartGameVisible(false);
@@ -160,7 +159,20 @@ function clearLobbyPlayers() {
 function addLobbyPlayer(player, className) {
     const messageElement = document.createElement('div');
     messageElement.className = className;
-    messageElement.innerText = player;
+    const playerName = typeof player === 'string' ? player : player.name;
+    const playerPicture = typeof player === 'string' ? '' : player.picture;
+
+    if (playerPicture) {
+        const image = document.createElement('img');
+        image.className = 'player-picture';
+        image.src = playerPicture;
+        image.alt = `${playerName}'s profile picture`;
+        messageElement.appendChild(image);
+    }
+
+    const name = document.createElement('span');
+    name.innerText = playerName;
+    messageElement.appendChild(name);
 
     const playerList = document.getElementById('lobby-players');
     playerList.appendChild(messageElement);

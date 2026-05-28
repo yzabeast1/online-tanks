@@ -796,7 +796,7 @@ struct GameStateResponse<'a> {
     players: Vec<PlayerResponse<'a>>,
     id: &'a str,
     current_turn_player: usize,
-    draw_pile: &'a [Card],
+    draw_pile_count: usize,
     discard_pile: &'a [Card],
     turn_state: &'a TurnState,
     active_cards: &'a ActiveCards,
@@ -835,9 +835,32 @@ struct PlayerResponse<'a> {
     health: isize,
 }
 
+#[derive(Serialize)]
+struct LobbyPlayerResponse<'a> {
+    name: &'a str,
+    picture: Option<&'a str>,
+}
+
+fn can_view_player_private_data(
+    game: &GameState,
+    player_name: &str,
+    username: Option<&str>,
+    shoo_user_id: Option<&str>,
+) -> bool {
+    if Some(player_name) != username {
+        return false;
+    }
+
+    match game.shoo_identities.get(player_name) {
+        Some(expected_shoo_user_id) => Some(expected_shoo_user_id.as_str()) == shoo_user_id,
+        None => true,
+    }
+}
+
 fn game_state_response_for_player<'a>(
     game: &'a GameState,
     username: Option<&str>,
+    shoo_user_id: Option<&str>,
 ) -> GameStateResponse<'a> {
     let players = game
         .players
@@ -848,7 +871,7 @@ fn game_state_response_for_player<'a>(
                 .shoo_pictures
                 .get(&player.name)
                 .map(|picture| picture.as_str()),
-            hand: if Some(player.name.as_str()) == username {
+            hand: if can_view_player_private_data(game, &player.name, username, shoo_user_id) {
                 &player.hand
             } else {
                 &[]
@@ -862,7 +885,7 @@ fn game_state_response_for_player<'a>(
         players,
         id: &game.id,
         current_turn_player: game.current_turn_player,
-        draw_pile: &game.draw_pile,
+        draw_pile_count: game.draw_pile.len(),
         discard_pile: &game.discard_pile,
         turn_state: &game.turn_state,
         active_cards: &game.active_cards,
@@ -1217,19 +1240,24 @@ async fn handle_request(
                     match lobbies.get(&joincode) {
                         Some(lobby) => {
                             let host = lobby.players.first().cloned().unwrap_or_default();
-                            let host_shoo_user_id =
-                                lobby.shoo_identities.get(&host).cloned().unwrap_or_default();
+                            let players: Vec<LobbyPlayerResponse> = lobby
+                                .players
+                                .iter()
+                                .map(|player| LobbyPlayerResponse {
+                                    name: player,
+                                    picture: lobby
+                                        .shoo_pictures
+                                        .get(player)
+                                        .map(|picture| picture.as_str()),
+                                })
+                                .collect();
                             Ok(Response::builder()
                                 .status(StatusCode::OK)
                                 .header("content-type", "application/json")
                                 .header("access-control-allow-origin", "*")
-                                .header(
-                                    "access-control-expose-headers",
-                                    "host-username, host-shoo-user-id",
-                                )
+                                .header("access-control-expose-headers", "host-username")
                                 .header("host-username", host)
-                                .header("host-shoo-user-id", host_shoo_user_id)
-                                .body(Body::from(serde_json::to_string(&lobby.players).unwrap()))
+                                .body(Body::from(serde_json::to_string(&players).unwrap()))
                                 .unwrap())
                         }
                         None => Ok(text_response(
@@ -1305,6 +1333,7 @@ async fn handle_request(
         (&Method::GET, "/gameState") => {
             let joincode: Option<String> = header_value(&req, "joincode");
             let username: Option<String> = header_value(&req, "username");
+            let shoo_user_id: Option<String> = header_value(&req, "shoo_user_id");
             match joincode {
                 Some(joincode) => {
                     let mut games = lock_or_recover(&state.games, "games");
@@ -1313,6 +1342,7 @@ async fn handle_request(
                             let body = serde_json::to_string(&game_state_response_for_player(
                                 game,
                                 username.as_deref(),
+                                shoo_user_id.as_deref(),
                             ))
                             .unwrap();
                             Ok(json_response(StatusCode::OK, body))

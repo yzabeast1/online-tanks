@@ -63,7 +63,12 @@ async function fetchDeck() {
 // Fetch the game state from the server every second
 async function fetchGameState() {
     try {
-        const response = await fetch(`https://${serverip}/gameState`, { headers: { joincode: joincode, username: username } });
+        const headers = {
+            joincode: joincode,
+            username: username,
+            ...shooHeaders(shooAccountDetails()),
+        };
+        const response = await fetch(`https://${serverip}/gameState`, { headers });
         gameData = await response.json();
         renderGame();  // Render the game whenever the game state is updated
     } catch (error) {
