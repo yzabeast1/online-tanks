@@ -168,6 +168,102 @@ select option {
     overflow-wrap: anywhere;
 }
 
+.my-game-summary {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+}
+
+.my-game-details {
+    display: grid;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.my-game-turn {
+    color: var(--accent-strong);
+}
+
+.my-game-players {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.my-game-player {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: rgba(244, 239, 224, 0.06);
+    overflow: visible;
+}
+
+.my-game-player.current-turn-player {
+    border-color: var(--accent-strong);
+    box-shadow: 0 0 0 2px rgba(240, 190, 95, 0.34);
+}
+
+.my-game-player .player-picture {
+    width: 100%;
+    height: 100%;
+    flex-basis: 100%;
+    border: 0;
+    border-radius: 50%;
+    font-size: 12px;
+}
+
+.my-game-player-name {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 9px);
+    z-index: 2;
+    width: max-content;
+    max-width: min(180px, calc(100vw - 48px));
+    padding: 6px 9px;
+    border: 1px solid rgba(240, 190, 95, 0.5);
+    border-radius: 5px;
+    color: var(--text);
+    background: #20251d;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.2;
+    opacity: 0;
+    overflow-wrap: break-word;
+    pointer-events: none;
+    text-align: center;
+    transform: translate(-50%, 4px);
+    transition: opacity 120ms ease, transform 120ms ease;
+    white-space: normal;
+    word-break: normal;
+}
+
+.my-game-player-name::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    width: 8px;
+    height: 8px;
+    border-right: 1px solid rgba(240, 190, 95, 0.5);
+    border-bottom: 1px solid rgba(240, 190, 95, 0.5);
+    background: #20251d;
+    transform: translate(-50%, -4px) rotate(45deg);
+}
+
+.my-game-player:hover .my-game-player-name,
+.my-game-player:focus-visible .my-game-player-name {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
 .my-game-remove {
     width: 34px;
     height: 34px;

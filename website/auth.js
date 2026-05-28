@@ -394,6 +394,43 @@ function renderMyShooGames(games) {
         const gameLabel = document.createElement('span');
         gameLabel.className = 'my-game-label';
         gameLabel.innerText = `${game.joincode} - ${game.status}${usernameNote}`;
+
+        const gameDetails = document.createElement('div');
+        gameDetails.className = 'my-game-details';
+        if (game.status === 'started' && game.current_turn_player) {
+            const turn = document.createElement('div');
+            turn.className = 'my-game-turn';
+            turn.innerText = `${game.current_turn_player}'s turn`;
+            gameDetails.appendChild(turn);
+        }
+        const otherPlayers = (game.players || []).filter(player => player.name !== game.username);
+        if (otherPlayers.length > 0) {
+            const players = document.createElement('div');
+            players.className = 'my-game-players';
+            otherPlayers.forEach(player => {
+                const playerButton = document.createElement('span');
+                playerButton.className = 'my-game-player';
+                playerButton.setAttribute('aria-label', player.name);
+                if (player.name === game.current_turn_player) {
+                    playerButton.classList.add('current-turn-player');
+                }
+                playerButton.appendChild(createPlayerPicture(player));
+                const playerName = document.createElement('span');
+                playerName.className = 'my-game-player-name';
+                playerName.innerText = player.name;
+                playerButton.appendChild(playerName);
+                players.appendChild(playerButton);
+            });
+            gameDetails.appendChild(players);
+        }
+
+        const gameSummary = document.createElement('div');
+        gameSummary.className = 'my-game-summary';
+        gameSummary.appendChild(gameLabel);
+        if (gameDetails.childElementCount > 0) {
+            gameSummary.appendChild(gameDetails);
+        }
+
         gameButton.addEventListener('click', () => rejoinShooGame(game));
         gameButton.addEventListener('keydown', event => {
             if (event.key === 'Enter' || event.key === ' ') {
@@ -413,7 +450,7 @@ function renderMyShooGames(games) {
             removeShooGame(game);
         });
 
-        gameButton.appendChild(gameLabel);
+        gameButton.appendChild(gameSummary);
         gameButton.appendChild(removeButton);
         gamesEl.appendChild(gameButton);
     });

@@ -808,6 +808,14 @@ struct MyGameResponse {
     joincode: String,
     username: String,
     status: String,
+    players: Vec<MyGamePlayerResponse>,
+    current_turn_player: Option<String>,
+}
+
+#[derive(Serialize)]
+struct MyGamePlayerResponse {
+    name: String,
+    picture: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1117,6 +1125,15 @@ async fn handle_request(
                                         joincode: joincode.clone(),
                                         username: username.clone(),
                                         status: "lobby".to_string(),
+                                        players: lobby
+                                            .players
+                                            .iter()
+                                            .map(|player| MyGamePlayerResponse {
+                                                name: player.clone(),
+                                                picture: lobby.shoo_pictures.get(player).cloned(),
+                                            })
+                                            .collect(),
+                                        current_turn_player: None,
                                     });
                                 }
                             }
@@ -1132,6 +1149,18 @@ async fn handle_request(
                                         joincode: joincode.clone(),
                                         username: username.clone(),
                                         status: "started".to_string(),
+                                        players: game
+                                            .players
+                                            .iter()
+                                            .map(|player| MyGamePlayerResponse {
+                                                name: player.name.clone(),
+                                                picture: game.shoo_pictures.get(&player.name).cloned(),
+                                            })
+                                            .collect(),
+                                        current_turn_player: game
+                                            .players
+                                            .get(game.current_turn_player)
+                                            .map(|player| player.name.clone()),
                                     });
                                 }
                             }
