@@ -235,6 +235,16 @@ pub struct ServerState {
     pub lobbies: Mutex<HashMap<String, LobbyState>>,
     pub started_games: Mutex<HashSet<String>>,
     pub games: Mutex<HashMap<String, GameState>>,
+    #[serde(default)]
+    pub shoo_settings: Mutex<HashMap<String, ShooUserSettings>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ShooUserSettings {
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub picture: Option<String>,
 }
 
 impl ServerState {
@@ -243,6 +253,7 @@ impl ServerState {
             lobbies: Mutex::new(HashMap::new()),
             started_games: Mutex::new(HashSet::new()),
             games: Mutex::new(HashMap::new()),
+            shoo_settings: Mutex::new(HashMap::new()),
         }
     }
 

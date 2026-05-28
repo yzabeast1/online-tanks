@@ -34,6 +34,7 @@ async function joinLobby() {
     const account = shooAccountDetails();
     if (account) {
         shooAccount = account;
+        await ensureShooSettingsLoaded(account);
         applyShooDefaults(account);
         updateShooUi();
     }
@@ -63,7 +64,7 @@ async function joinLobby() {
     })
         .then(response => {
             if (!response.ok) throw new Error('HTTPS failed'); // Handle HTTP errors
-            logShooAccountDetails('joined game', account);
+            if (account) logShooAccountDetails('joined game', account);
             document.getElementById('lobby-show-code').innerHTML = "JoinCode: " + joincode
             loadMyShooGames();
         })
@@ -79,6 +80,7 @@ async function newGame() {
     const account = shooAccountDetails();
     if (account) {
         shooAccount = account;
+        await ensureShooSettingsLoaded(account);
         applyShooDefaults(account);
         updateShooUi();
     }
@@ -108,7 +110,7 @@ async function newGame() {
             document.getElementById('lobby-show-code').innerHTML = "JoinCode: " + document.getElementById('joincode-input').value
             lobbyPlayersInterval = setInterval(lobbyPlayers, playersInLobbyCooldown);
             addLobbyPlayer(username, 'server-messsage')
-            logShooAccountDetails('created game', account);
+            if (account) logShooAccountDetails('created game', account);
             loadMyShooGames();
             lobbyPlayers();
             startChat();

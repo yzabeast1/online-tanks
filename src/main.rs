@@ -811,6 +811,14 @@ struct MyGameResponse {
 }
 
 #[derive(Serialize)]
+struct ShooSettingsResponse {
+    username: String,
+    picture: String,
+    has_custom_username: bool,
+    has_custom_picture: bool,
+}
+
+#[derive(Serialize)]
 struct PlayerResponse<'a> {
     name: &'a str,
     picture: Option<&'a str>,
@@ -851,6 +859,36 @@ fn game_state_response_for_player<'a>(
         turn_state: &game.turn_state,
         active_cards: &game.active_cards,
         chat_messages: &game.chat_messages,
+    }
+}
+
+fn normalized_header_value(req: &Request<Body>, name: &str) -> String {
+    header_value(req, name)
+        .map(|value| value.trim().to_string())
+        .unwrap_or_default()
+}
+
+fn shoo_settings_response(
+    state: &Arc<ServerState>,
+    shoo_user_id: &str,
+    default_username: String,
+    default_picture: String,
+) -> ShooSettingsResponse {
+    let settings = lock_or_recover(&state.shoo_settings, "shoo_settings");
+    let saved = settings.get(shoo_user_id);
+    ShooSettingsResponse {
+        username: saved
+            .and_then(|settings| settings.username.clone())
+            .unwrap_or(default_username),
+        picture: saved
+            .and_then(|settings| settings.picture.clone())
+            .unwrap_or(default_picture),
+        has_custom_username: saved
+            .and_then(|settings| settings.username.as_ref())
+            .is_some(),
+        has_custom_picture: saved
+            .and_then(|settings| settings.picture.as_ref())
+            .is_some(),
     }
 }
 
@@ -914,10 +952,93 @@ async fn handle_request(
         }
         (&Method::GET, "/lobby.js") => serve_lobby_js(&server_settings).await,
         (&Method::GET, "/checkOnline") => Ok(text_response(StatusCode::OK, "Online")),
+        (&Method::GET, "/shooSettings") => {
+            let shoo_user_id = header_value(&req, "shoo_user_id");
+            match shoo_user_id {
+                Some(shoo_user_id) => {
+                    let default_username = normalized_header_value(&req, "shoo_default_username");
+                    let default_picture = normalized_header_value(&req, "shoo_default_picture");
+                    Ok(json_response(
+                        StatusCode::OK,
+                        serde_json::to_string(&shoo_settings_response(
+                            &state,
+                            &shoo_user_id,
+                            default_username,
+                            default_picture,
+                        ))
+                        .unwrap(),
+                    ))
+                }
+                None => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing shoo_user_id",
+                )),
+            }
+        }
+        (&Method::POST, "/shooSettings") => {
+            let shoo_user_id = header_value(&req, "shoo_user_id");
+            match shoo_user_id {
+                Some(shoo_user_id) => {
+                    let default_username = normalized_header_value(&req, "shoo_default_username");
+                    let default_picture = normalized_header_value(&req, "shoo_default_picture");
+                    let username = normalized_header_value(&req, "settings_username");
+                    let picture = normalized_header_value(&req, "settings_picture");
+
+                    let custom_username = if username.is_empty() || username == default_username {
+                        None
+                    } else {
+                        Some(username)
+                    };
+                    let custom_picture = if picture.is_empty() || picture == default_picture {
+                        None
+                    } else {
+                        Some(picture)
+                    };
+
+                    {
+                        let mut settings = lock_or_recover(&state.shoo_settings, "shoo_settings");
+                        if custom_username.is_none() && custom_picture.is_none() {
+                            settings.remove(&shoo_user_id);
+                        } else {
+                            settings.insert(
+                                shoo_user_id.clone(),
+                                ShooUserSettings {
+                                    username: custom_username,
+                                    picture: custom_picture,
+                                },
+                            );
+                        }
+                    }
+
+                    Ok(json_response(
+                        StatusCode::OK,
+                        serde_json::to_string(&shoo_settings_response(
+                            &state,
+                            &shoo_user_id,
+                            default_username,
+                            default_picture,
+                        ))
+                        .unwrap(),
+                    ))
+                }
+                None => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing shoo_user_id",
+                )),
+            }
+        }
         (&Method::POST, "/createGame") => {
             let username = header_value(&req, "username");
             let shoo_user_id = header_value(&req, "shoo_user_id");
-            let shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
+            let mut shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
+            if let Some(shoo_user_id) = shoo_user_id.as_ref() {
+                if let Some(custom_picture) = lock_or_recover(&state.shoo_settings, "shoo_settings")
+                    .get(shoo_user_id)
+                    .and_then(|settings| settings.picture.clone())
+                {
+                    shoo_picture = custom_picture;
+                }
+            }
             match username {
                 Some(username) => {
                     let joincode = unique_joincode_for_state(&state);
@@ -942,7 +1063,15 @@ async fn handle_request(
             let username = header_value(&req, "username");
             let joincode = header_value(&req, "joincode");
             let shoo_user_id = header_value(&req, "shoo_user_id");
-            let shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
+            let mut shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
+            if let Some(shoo_user_id) = shoo_user_id.as_ref() {
+                if let Some(custom_picture) = lock_or_recover(&state.shoo_settings, "shoo_settings")
+                    .get(shoo_user_id)
+                    .and_then(|settings| settings.picture.clone())
+                {
+                    shoo_picture = custom_picture;
+                }
+            }
             match (username, joincode) {
                 (Some(username), Some(joincode)) => {
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");

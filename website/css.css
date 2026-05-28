@@ -56,7 +56,8 @@ button:active {
 }
 
 input[type="text"],
-select {
+select,
+.settings-menu summary {
     width: 100%;
     min-height: 42px;
     border: 1px solid var(--line);
@@ -182,6 +183,69 @@ select option {
 #my-games {
     display: grid;
     gap: 8px;
+}
+
+.settings-menu {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+}
+
+.settings-menu summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text);
+    font-weight: 800;
+    cursor: pointer;
+    list-style: none;
+}
+
+.settings-menu summary::-webkit-details-marker {
+    display: none;
+}
+
+.settings-menu summary::after {
+    content: "+";
+    color: var(--accent-strong);
+    font-size: 18px;
+    line-height: 1;
+}
+
+.settings-menu details[open] summary::after {
+    content: "-";
+}
+
+.settings-form {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.settings-form label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.settings-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.settings-actions button[type="button"] {
+    color: var(--text);
+    background: rgba(244, 239, 224, 0.08);
+    border-color: var(--line);
+    box-shadow: none;
+}
+
+.settings-status {
+    min-height: 18px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
 }
 
 .my-games-title {
