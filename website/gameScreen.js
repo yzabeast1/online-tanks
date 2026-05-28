@@ -20,6 +20,32 @@ function cardImageFolder(cardType) {
     return 'support';
 }
 
+function playerInitials(playerName) {
+    return (playerName || '?')
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map(part => part[0])
+        .join('')
+        .toUpperCase() || '?';
+}
+
+function createPlayerPicture(playerData) {
+    if (playerData.picture) {
+        const playerPicture = document.createElement('img');
+        playerPicture.classList.add('player-picture');
+        playerPicture.src = playerData.picture;
+        playerPicture.alt = `${playerData.name}'s profile picture`;
+        return playerPicture;
+    }
+
+    const defaultPicture = document.createElement('div');
+    defaultPicture.classList.add('player-picture', 'default-player-picture');
+    defaultPicture.innerText = playerInitials(playerData.name);
+    defaultPicture.setAttribute('aria-label', `${playerData.name}'s default profile picture`);
+    return defaultPicture;
+}
+
 function spectateGame() {
     document.getElementById('spectate-when-dead').style.display = 'none'
     spectating = true
@@ -116,14 +142,7 @@ function renderGame() {
 
                     const playerHeader = document.createElement('div');
                     playerHeader.classList.add('player-header');
-
-                    if (playerData.picture) {
-                        const playerPicture = document.createElement('img');
-                        playerPicture.classList.add('player-picture');
-                        playerPicture.src = playerData.picture;
-                        playerPicture.alt = `${playerData.name}'s profile picture`;
-                        playerHeader.appendChild(playerPicture);
-                    }
+                    playerHeader.appendChild(createPlayerPicture(playerData));
 
                     const healthText = document.createElement('p');
                     healthText.innerText = `${playerData.name}'s Health: ${playerData.health}`;

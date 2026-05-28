@@ -404,11 +404,20 @@ label[for="show-deck-checkbox"] {
 .player-picture {
     width: 34px;
     height: 34px;
+    display: grid;
+    place-items: center;
     flex: 0 0 34px;
     border: 1px solid var(--line);
     border-radius: 50%;
     object-fit: cover;
     background: rgba(244, 239, 224, 0.08);
+}
+
+.default-player-picture {
+    color: var(--accent-strong);
+    background: rgba(214, 168, 79, 0.16);
+    font-size: 13px;
+    font-weight: 900;
 }
 
 .player-header > p {
