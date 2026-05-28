@@ -156,9 +156,18 @@ function clearLobbyPlayers() {
     const players = document.getElementById('lobby-players');
     players.innerHTML = ''; // Clear all messages
 }
+function lobbyPlayerInitials(playerName) {
+    return (playerName || '?')
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map(part => part[0])
+        .join('')
+        .toUpperCase() || '?';
+}
 function addLobbyPlayer(player, className) {
     const messageElement = document.createElement('div');
-    messageElement.className = className;
+    messageElement.className = `${className} lobby-player`;
     const playerName = typeof player === 'string' ? player : player.name;
     const playerPicture = typeof player === 'string' ? '' : player.picture;
 
@@ -168,6 +177,12 @@ function addLobbyPlayer(player, className) {
         image.src = playerPicture;
         image.alt = `${playerName}'s profile picture`;
         messageElement.appendChild(image);
+    } else {
+        const defaultPicture = document.createElement('div');
+        defaultPicture.className = 'player-picture default-player-picture';
+        defaultPicture.innerText = lobbyPlayerInitials(playerName);
+        defaultPicture.setAttribute('aria-label', `${playerName}'s default profile picture`);
+        messageElement.appendChild(defaultPicture);
     }
 
     const name = document.createElement('span');

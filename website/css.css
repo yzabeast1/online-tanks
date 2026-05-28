@@ -490,7 +490,6 @@ select option {
 }
 
 .lobby-players {
-    min-height: 140px;
     margin: 16px 0;
     padding: 12px;
     display: grid;
@@ -507,6 +506,18 @@ select option {
 
 .lobby-players .server-message {
     background: rgba(244, 239, 224, 0.08);
+}
+
+.lobby-player {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+}
+
+.lobby-player span {
+    color: var(--text);
+    font-weight: 800;
 }
 
 .start-game,
