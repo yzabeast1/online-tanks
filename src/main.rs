@@ -1361,29 +1361,50 @@ async fn handle_request(
             let username = header_value(&req, "username");
             match (joincode, username) {
                 (Some(joincode), Some(username)) => {
-                    let mut games = lock_or_recover(&state.games, "games");
-                    match games.get_mut(&joincode) {
-                        Some(game) => {
-                            // Find the quitting player
-                            if let Some(player_index) =
-                                game.players.iter().position(|p| p.name == username)
-                            {
-                                game.push_server_chat_message(format!("{} quit", username));
-                                if game.remove_player(player_index, true) {
-                                    games.remove(&joincode);
-                                } else {
-                                    game.shoo_identities.remove(&username);
-                                    game.shoo_pictures.remove(&username);
-                                }
+                    {
+                        let mut games = lock_or_recover(&state.games, "games");
+                        if let Some(game) = games.get_mut(&joincode) {
+                            match game.players.iter().position(|p| p.name == username) {
+                                Some(player_index) => {
+                                    game.push_server_chat_message(format!("{} quit", username));
+                                    if game.remove_player(player_index, true) {
+                                        games.remove(&joincode);
+                                    } else {
+                                        game.shoo_identities.remove(&username);
+                                        game.shoo_pictures.remove(&username);
+                                    }
 
-                                return Ok(text_response(StatusCode::OK, "quit"));
-                            } else {
-                                return Ok(text_response(
-                                    StatusCode::NOT_FOUND,
-                                    "player not found in game",
-                                ));
+                                    return Ok(text_response(StatusCode::OK, "quit"));
+                                }
+                                None => {
+                                    return Ok(text_response(
+                                        StatusCode::NOT_FOUND,
+                                        "player not found in game",
+                                    ));
+                                }
                             }
                         }
+                    }
+
+                    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
+                    match lobbies.get_mut(&joincode) {
+                        Some(lobby) => match lobby.players.iter().position(|p| p == &username) {
+                            Some(player_index) => {
+                                lobby.players.remove(player_index);
+                                if lobby.players.is_empty() {
+                                    lobbies.remove(&joincode);
+                                } else {
+                                    lobby.shoo_identities.remove(&username);
+                                    lobby.shoo_pictures.remove(&username);
+                                }
+
+                                Ok(text_response(StatusCode::OK, "quit"))
+                            }
+                            None => Ok(text_response(
+                                StatusCode::NOT_FOUND,
+                                "player not found in game",
+                            )),
+                        },
                         None => Ok(text_response(
                             StatusCode::NOT_FOUND,
                             "game not found for joincode",

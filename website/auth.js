@@ -384,16 +384,60 @@ function renderMyShooGames(games) {
     const defaultUsername = account ? shooEffectiveUsername(account) : '';
 
     games.forEach(game => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'my-game-button';
+        const gameButton = document.createElement('div');
+        gameButton.className = 'my-game-button';
+        gameButton.role = 'button';
+        gameButton.tabIndex = 0;
         const usernameNote = game.username && game.username !== defaultUsername
             ? ` as ${game.username}`
             : '';
-        button.innerText = `${game.joincode} - ${game.status}${usernameNote}`;
-        button.addEventListener('click', () => rejoinShooGame(game));
-        gamesEl.appendChild(button);
+        const gameLabel = document.createElement('span');
+        gameLabel.className = 'my-game-label';
+        gameLabel.innerText = `${game.joincode} - ${game.status}${usernameNote}`;
+        gameButton.addEventListener('click', () => rejoinShooGame(game));
+        gameButton.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                rejoinShooGame(game);
+            }
+        });
+
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'my-game-remove';
+        removeButton.innerHTML = '&#128465;';
+        removeButton.setAttribute('aria-label', `Remove game ${game.joincode}`);
+        removeButton.title = 'Remove game';
+        removeButton.addEventListener('click', event => {
+            event.stopPropagation();
+            removeShooGame(game);
+        });
+
+        gameButton.appendChild(gameLabel);
+        gameButton.appendChild(removeButton);
+        gamesEl.appendChild(gameButton);
     });
+}
+
+async function removeShooGame(game) {
+    try {
+        const response = await fetch(`https://${serverip}/quitGame`, {
+            method: 'POST',
+            headers: {
+                'joincode': game.joincode,
+                'username': game.username,
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error('Could not remove Shoo game');
+        }
+
+        loadMyShooGames();
+    } catch (error) {
+        console.error('Error removing Shoo game:', error);
+        alert('Could not remove game');
+    }
 }
 
 function rejoinShooGame(game) {

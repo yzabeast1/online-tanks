@@ -140,6 +140,47 @@ select option {
     box-shadow: none;
 }
 
+.my-game-button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 8px;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 10px 10px 14px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.my-game-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(214, 168, 79, 0.12);
+}
+
+.my-game-button:focus-visible {
+    outline: 2px solid var(--accent-strong);
+    outline-offset: 2px;
+}
+
+.my-game-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.my-game-remove {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    padding: 0;
+    color: var(--text);
+    font-size: 18px;
+    line-height: 1;
+    background: rgba(217, 95, 75, 0.14);
+    border-color: rgba(217, 95, 75, 0.45);
+    box-shadow: none;
+}
+
 .shoo-account-summary {
     display: flex;
     align-items: center;
