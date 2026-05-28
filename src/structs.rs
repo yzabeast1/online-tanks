@@ -211,11 +211,13 @@ pub struct LobbyState {
 }
 
 impl LobbyState {
-    pub fn new(host: String, shoo_user_id: String, shoo_picture: String) -> Self {
+    pub fn new(host: String, shoo_user_id: Option<String>, shoo_picture: String) -> Self {
         let mut shoo_identities = HashMap::new();
-        shoo_identities.insert(host.clone(), shoo_user_id);
+        if let Some(shoo_user_id) = shoo_user_id {
+            shoo_identities.insert(host.clone(), shoo_user_id);
+        }
         let mut shoo_pictures = HashMap::new();
-        if !shoo_picture.is_empty() {
+        if !shoo_picture.is_empty() && shoo_identities.contains_key(&host) {
             shoo_pictures.insert(host.clone(), shoo_picture);
         }
 

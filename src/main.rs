@@ -918,8 +918,8 @@ async fn handle_request(
             let username = header_value(&req, "username");
             let shoo_user_id = header_value(&req, "shoo_user_id");
             let shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
-            match (username, shoo_user_id) {
-                (Some(username), Some(shoo_user_id)) => {
+            match username {
+                Some(username) => {
                     let joincode = unique_joincode_for_state(&state);
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     lobbies.insert(
@@ -935,10 +935,7 @@ async fn handle_request(
                         .body(Body::from(joincode))
                         .unwrap())
                 }
-                _ => Ok(text_response(
-                    StatusCode::BAD_REQUEST,
-                    "missing username or shoo_user_id",
-                )),
+                _ => Ok(text_response(StatusCode::BAD_REQUEST, "missing username")),
             }
         }
         (&Method::POST, "/joinGame") => {
@@ -946,8 +943,8 @@ async fn handle_request(
             let joincode = header_value(&req, "joincode");
             let shoo_user_id = header_value(&req, "shoo_user_id");
             let shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
-            match (username, joincode, shoo_user_id) {
-                (Some(username), Some(joincode), Some(shoo_user_id)) => {
+            match (username, joincode) {
+                (Some(username), Some(joincode)) => {
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get_mut(&joincode) {
                         Some(lobby) => {
@@ -958,9 +955,11 @@ async fn handle_request(
                                 ))
                             } else {
                                 lobby.players.push(username.clone());
-                                lobby.shoo_identities.insert(username.clone(), shoo_user_id);
-                                if !shoo_picture.is_empty() {
-                                    lobby.shoo_pictures.insert(username, shoo_picture);
+                                if let Some(shoo_user_id) = shoo_user_id {
+                                    lobby.shoo_identities.insert(username.clone(), shoo_user_id);
+                                    if !shoo_picture.is_empty() {
+                                        lobby.shoo_pictures.insert(username, shoo_picture);
+                                    }
                                 }
                                 Ok(text_response(StatusCode::OK, "joined game lobby"))
                             }
@@ -970,7 +969,7 @@ async fn handle_request(
                 }
                 _ => Ok(text_response(
                     StatusCode::BAD_REQUEST,
-                    "missing username, joincode, or shoo_user_id",
+                    "missing username or joincode",
                 )),
             }
         }

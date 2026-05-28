@@ -66,6 +66,10 @@ function applyShooDefaults(account) {
 }
 
 function shooHeaders(account) {
+    if (!account) {
+        return {};
+    }
+
     return {
         shoo_user_id: account.userId,
         shoo_token: account.token || '',

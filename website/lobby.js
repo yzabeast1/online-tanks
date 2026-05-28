@@ -31,9 +31,12 @@ function startSpectating() {
     startChat();
 }
 async function joinLobby() {
-    const account = await requireShooAccount();
-    if (!account) return;
-    applyShooDefaults(account);
+    const account = shooAccountDetails();
+    if (account) {
+        shooAccount = account;
+        applyShooDefaults(account);
+        updateShooUi();
+    }
     username = document.getElementById('username-input').value;
     joincode = document.getElementById('joincode-input').value;
     if (joincode.trim() === '' || username.trim() === '') {
@@ -73,9 +76,12 @@ async function joinLobby() {
     startChat();
 }
 async function newGame() {
-    const account = await requireShooAccount();
-    if (!account) return;
-    applyShooDefaults(account);
+    const account = shooAccountDetails();
+    if (account) {
+        shooAccount = account;
+        applyShooDefaults(account);
+        updateShooUi();
+    }
     username = document.getElementById('username-input').value;
     if (username.trim() === '') {
         alert('Please enter a username');
