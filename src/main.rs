@@ -780,10 +780,12 @@ fn generate_joincode() -> String {
     code
 }
 
-fn unique_joincode(existing: &std::collections::HashMap<String, LobbyState>) -> String {
+fn unique_joincode_for_state(state: &ServerState) -> String {
+    let lobbies = lock_or_recover(&state.lobbies, "lobbies");
+    let games = lock_or_recover(&state.games, "games");
     loop {
         let code = generate_joincode();
-        if !existing.contains_key(&code) {
+        if !lobbies.contains_key(&code) && !games.contains_key(&code) {
             return code;
         }
     }
@@ -799,6 +801,13 @@ struct GameStateResponse<'a> {
     turn_state: &'a TurnState,
     active_cards: &'a ActiveCards,
     chat_messages: &'a [ChatMessage],
+}
+
+#[derive(Serialize)]
+struct MyGameResponse {
+    joincode: String,
+    username: String,
+    status: String,
 }
 
 #[derive(Serialize)]
@@ -878,7 +887,7 @@ async fn handle_request(
 ) -> Result<Response<Body>, Infallible> {
     let path = req.uri().path().to_string();
     match (req.method(), path.as_str()) {
-        (&Method::GET, "/") | (&Method::GET, "/index.html") => {
+        (&Method::GET, "/") | (&Method::GET, "/index.html") | (&Method::GET, "/shoo/callback") => {
             let p = format!("{}/index.html", WEBSITE_DIR);
             serve_file(&p, "text/html; charset=utf-8").await
         }
@@ -893,7 +902,8 @@ async fn handle_request(
         (&Method::GET, "/gameScreen.js")
         | (&Method::GET, "/networkFunctions.js")
         | (&Method::GET, "/playCard.js")
-        | (&Method::GET, "/chat.js") => {
+        | (&Method::GET, "/chat.js")
+        | (&Method::GET, "/auth.js") => {
             let p = format!("{}/{}", WEBSITE_DIR, &path[1..]);
             serve_file(&p, "application/javascript").await
         }
@@ -901,11 +911,12 @@ async fn handle_request(
         (&Method::GET, "/checkOnline") => Ok(text_response(StatusCode::OK, "Online")),
         (&Method::POST, "/createGame") => {
             let username = header_value(&req, "username");
-            match username {
-                Some(username) => {
+            let shoo_user_id = header_value(&req, "shoo_user_id");
+            match (username, shoo_user_id) {
+                (Some(username), Some(shoo_user_id)) => {
+                    let joincode = unique_joincode_for_state(&state);
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
-                    let joincode = unique_joincode(&lobbies);
-                    lobbies.insert(joincode.clone(), LobbyState::new(username));
+                    lobbies.insert(joincode.clone(), LobbyState::new(username, shoo_user_id));
                     Ok(Response::builder()
                         .status(StatusCode::OK)
                         .header("content-type", "text/plain; charset=utf-8")
@@ -915,14 +926,18 @@ async fn handle_request(
                         .body(Body::from(joincode))
                         .unwrap())
                 }
-                None => Ok(text_response(StatusCode::BAD_REQUEST, "missing username")),
+                _ => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing username or shoo_user_id",
+                )),
             }
         }
         (&Method::POST, "/joinGame") => {
             let username = header_value(&req, "username");
             let joincode = header_value(&req, "joincode");
-            match (username, joincode) {
-                (Some(username), Some(joincode)) => {
+            let shoo_user_id = header_value(&req, "shoo_user_id");
+            match (username, joincode, shoo_user_id) {
+                (Some(username), Some(joincode), Some(shoo_user_id)) => {
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get_mut(&joincode) {
                         Some(lobby) => {
@@ -932,7 +947,8 @@ async fn handle_request(
                                     "no duplicate usernames allowed",
                                 ))
                             } else {
-                                lobby.players.push(username);
+                                lobby.players.push(username.clone());
+                                lobby.shoo_identities.insert(username, shoo_user_id);
                                 Ok(text_response(StatusCode::OK, "joined game lobby"))
                             }
                         }
@@ -941,7 +957,54 @@ async fn handle_request(
                 }
                 _ => Ok(text_response(
                     StatusCode::BAD_REQUEST,
-                    "missing username or joincode",
+                    "missing username, joincode, or shoo_user_id",
+                )),
+            }
+        }
+        (&Method::GET, "/myGames") => {
+            let shoo_user_id = header_value(&req, "shoo_user_id");
+            match shoo_user_id {
+                Some(shoo_user_id) => {
+                    let mut games_for_user = Vec::new();
+
+                    {
+                        let lobbies = lock_or_recover(&state.lobbies, "lobbies");
+                        for (joincode, lobby) in lobbies.iter() {
+                            for (username, identity) in lobby.shoo_identities.iter() {
+                                if identity == &shoo_user_id {
+                                    games_for_user.push(MyGameResponse {
+                                        joincode: joincode.clone(),
+                                        username: username.clone(),
+                                        status: "lobby".to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    {
+                        let games = lock_or_recover(&state.games, "games");
+                        for (joincode, game) in games.iter() {
+                            for (username, identity) in game.shoo_identities.iter() {
+                                if identity == &shoo_user_id {
+                                    games_for_user.push(MyGameResponse {
+                                        joincode: joincode.clone(),
+                                        username: username.clone(),
+                                        status: "started".to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    Ok(json_response(
+                        StatusCode::OK,
+                        serde_json::to_string(&games_for_user).unwrap(),
+                    ))
+                }
+                None => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing shoo_user_id",
                 )),
             }
         }
@@ -957,6 +1020,7 @@ async fn handle_request(
                                 lobby.players.iter().position(|player| player == &username)
                             {
                                 lobby.players.remove(index);
+                                lobby.shoo_identities.remove(&username);
                                 if lobby.players.is_empty() {
                                     lobbies.remove(&joincode);
                                 }
@@ -1000,8 +1064,11 @@ async fn handle_request(
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.remove(&joincode) {
                         Some(lobby) => {
-                            let mut game_state =
-                                GameState::new(joincode.clone(), lobby.players.clone());
+                            let mut game_state = GameState::new(
+                                joincode.clone(),
+                                lobby.players.clone(),
+                                lobby.shoo_identities,
+                            );
                             game_state.chat_messages = lobby.chat_messages;
                             game_state.start_game();
                             lock_or_recover(&state.games, "games")
@@ -1161,6 +1228,8 @@ async fn handle_request(
                                 game.push_server_chat_message(format!("{} quit", username));
                                 if game.remove_player(player_index, true) {
                                     games.remove(&joincode);
+                                } else {
+                                    game.shoo_identities.remove(&username);
                                 }
 
                                 return Ok(text_response(StatusCode::OK, "quit"));

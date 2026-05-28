@@ -124,6 +124,74 @@ select option {
     box-shadow: var(--shadow);
 }
 
+.login-container #shoo-account {
+    color: var(--muted);
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+#shoo-account button,
+.my-game-button {
+    width: 100%;
+    color: var(--text);
+    background: rgba(244, 239, 224, 0.08);
+    border-color: var(--line);
+    box-shadow: none;
+}
+
+.shoo-account-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.shoo-account-picture {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(244, 239, 224, 0.08);
+}
+
+.shoo-account-details {
+    min-width: 0;
+}
+
+.shoo-account-label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.shoo-account-name {
+    color: var(--text);
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.shoo-account-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+#my-games {
+    display: grid;
+    gap: 8px;
+}
+
+.my-games-title {
+    margin-top: 4px;
+    color: var(--accent-strong);
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
 .login-container br,
 .menu-screen > br,
 .game-screen > br {

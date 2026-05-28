@@ -181,6 +181,8 @@ impl ActiveCards {
 pub struct GameState {
     pub players: Vec<Player>,
     pub id: String,
+    #[serde(default)]
+    pub shoo_identities: HashMap<String, String>,
     pub current_turn_player: usize,
     pub draw_pile: Vec<Card>,
     pub discard_pile: Vec<Card>,
@@ -199,13 +201,19 @@ pub struct ChatMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LobbyState {
     pub players: Vec<String>,
+    #[serde(default)]
+    pub shoo_identities: HashMap<String, String>,
     pub chat_messages: Vec<ChatMessage>,
 }
 
 impl LobbyState {
-    pub fn new(host: String) -> Self {
+    pub fn new(host: String, shoo_user_id: String) -> Self {
+        let mut shoo_identities = HashMap::new();
+        shoo_identities.insert(host.clone(), shoo_user_id);
+
         Self {
             players: vec![host],
+            shoo_identities,
             chat_messages: Vec::new(),
         }
     }
@@ -237,7 +245,11 @@ impl ServerState {
 }
 
 impl GameState {
-    pub fn new(game_id: String, player_names: Vec<String>) -> Self {
+    pub fn new(
+        game_id: String,
+        player_names: Vec<String>,
+        shoo_identities: HashMap<String, String>,
+    ) -> Self {
         let mut players = Vec::new();
         for (i, name) in player_names.into_iter().enumerate() {
             players.push(Player::new(name, i));
@@ -246,6 +258,7 @@ impl GameState {
         return GameState {
             players,
             id: game_id,
+            shoo_identities,
             current_turn_player: 0,
             draw_pile: Vec::new(),
             discard_pile: Vec::new(),

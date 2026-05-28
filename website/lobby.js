@@ -30,7 +30,10 @@ function startSpectating() {
     lobbyPlayers();
     startChat();
 }
-function joinLobby() {
+async function joinLobby() {
+    const account = await requireShooAccount();
+    if (!account) return;
+    applyShooDefaults(account);
     username = document.getElementById('username-input').value;
     joincode = document.getElementById('joincode-input').value;
     if (joincode.trim() === '' || username.trim() === '') {
@@ -48,7 +51,8 @@ function joinLobby() {
     const headers = {
         'Content-Type': 'application/json',
         'username': username,
-        'joincode': joincode
+        'joincode': joincode,
+        ...shooHeaders(account)
     };
     fetch(`https://${serverip}/joinGame`, {
         method: 'POST',
@@ -56,7 +60,9 @@ function joinLobby() {
     })
         .then(response => {
             if (!response.ok) throw new Error('HTTPS failed'); // Handle HTTP errors
+            logShooAccountDetails('joined game', account);
             document.getElementById('lobby-show-code').innerHTML = "JoinCode: " + joincode
+            loadMyShooGames();
         })
         .catch(error => {
             console.error('HTTPS error:', error);
@@ -66,7 +72,10 @@ function joinLobby() {
     lobbyPlayers();
     startChat();
 }
-function newGame() {
+async function newGame() {
+    const account = await requireShooAccount();
+    if (!account) return;
+    applyShooDefaults(account);
     username = document.getElementById('username-input').value;
     if (username.trim() === '') {
         alert('Please enter a username');
@@ -77,7 +86,8 @@ function newGame() {
     document.querySelector('.container').style.display = 'flex'
     const headers = {
         'Content-Type': 'application/json',
-        'username': username
+        'username': username,
+        ...shooHeaders(account)
     };
 
     // Try sending the message using HTTPS
@@ -92,6 +102,8 @@ function newGame() {
             document.getElementById('lobby-show-code').innerHTML = "JoinCode: " + document.getElementById('joincode-input').value
             lobbyPlayersInterval = setInterval(lobbyPlayers, playersInLobbyCooldown);
             addLobbyPlayer(username, 'server-messsage')
+            logShooAccountDetails('created game', account);
+            loadMyShooGames();
             lobbyPlayers();
             startChat();
         })
