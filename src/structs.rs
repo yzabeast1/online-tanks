@@ -71,10 +71,6 @@ impl CardType {
             _ => None,
         }
     }
-
-    pub fn is_shooting_type(&self, shooting_type: ShootingType) -> bool {
-        self.shooting_type() == Some(shooting_type)
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -94,16 +90,14 @@ pub struct Card {
 pub struct Player {
     pub name: String,
     #[serde(skip)]
-    pub id: usize,
     pub hand: Vec<Card>,
     pub health: isize,
 }
 
 impl Player {
-    pub fn new(name: String, id: usize) -> Self {
+    pub fn new(name: String) -> Self {
         return Player {
             name,
-            id,
             hand: Vec::new(),
             health: 10,
         };
@@ -274,8 +268,8 @@ impl GameState {
         shoo_pictures: HashMap<String, String>,
     ) -> Self {
         let mut players = Vec::new();
-        for (i, name) in player_names.into_iter().enumerate() {
-            players.push(Player::new(name, i));
+        for name in player_names {
+            players.push(Player::new(name));
         }
 
         return GameState {
@@ -469,16 +463,6 @@ impl GameState {
         if let Some(card) = self.draw_pile.pop() {
             self.players[player_index].hand.push(card);
         }
-    }
-
-    pub fn player_by_id(&self, player_id: usize) -> Option<&Player> {
-        self.players.iter().find(|player| player.id == player_id)
-    }
-
-    pub fn player_by_id_mut(&mut self, player_id: usize) -> Option<&mut Player> {
-        self.players
-            .iter_mut()
-            .find(|player| player.id == player_id)
     }
 
     pub fn player_by_name(&self, name: &str) -> Option<&Player> {
