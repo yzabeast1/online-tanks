@@ -772,9 +772,12 @@ fn play_health_hazard(_: &Card, game_state: &mut GameState, _: usize, req: &Requ
     target_player.health = thread_rng().gen_range(1..=10);
 }
 fn play_spray(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
-    game_state.heal_player(player_index, 1);
     for i in 1..game_state.players.len() {
-        game_state.damage_player(i, 3);
+        if i != player_index {
+            game_state.damage_player(i, 3);
+        } else {
+            game_state.damage_player(player_index, 2);
+        }
     }
 }
 fn play_nuke(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
