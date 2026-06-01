@@ -255,7 +255,12 @@ document.addEventListener('keydown', (event) => {
     }
 });
 function startGame() {
-    postWithFallbackNoJSON(`https://${serverip}/startGame`, { joincode: joincode })
+    const headers = { joincode: joincode };
+    if (typeof readLobbySettings === 'function') {
+        headers.settings = JSON.stringify(readLobbySettings());
+    }
+
+    postWithFallbackNoJSON(`https://${serverip}/startGame`, headers)
         .then(response => {
             if (response && response.ok) {
                 joinStartedGame();

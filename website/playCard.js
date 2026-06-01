@@ -11,10 +11,12 @@ function cardNeedsTarget(card) {
     if (!card) return false;
     const type = shootingType(card);
     const isCalculatedShooting = type === 'Calculated';
+    const canHealOthers = gameData.game_settings?.play_heal_on_others;
     return ((type && !['landmine', 'distractor-missile'].includes(card.id)) && !isCalculatedShooting)
         || card.id === 'airstrike'
         || card.id === 'steal'
-        || card.id === 'health-hazard';
+        || card.id === 'health-hazard'
+        || (canHealOthers && isHealingCard(card));
 }
 
 function firingFilterBlocksTarget(card, playerName) {
@@ -26,10 +28,17 @@ function firingFilterBlocksTarget(card, playerName) {
     );
 }
 
+function isHealingCard(card) {
+    return card && ['repair', 'repair-kit', 'new-model'].includes(card.id);
+}
+
 function validTargetsForCard(card) {
-    return gameData.players.filter(player =>
-        player.name !== username && !firingFilterBlocksTarget(card, player.name)
-    );
+    if (isHealingCard(card)) {
+        const maxHealth = gameData.game_settings?.max_health ?? 10;
+        return gameData.players.filter(player => card.id === 'new-model' || player.health < maxHealth);
+    }
+
+    return gameData.players.filter(player => player.name !== username && !firingFilterBlocksTarget(card, player.name));
 }
 
 function hasValidTargetsForCard(card) {

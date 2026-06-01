@@ -322,6 +322,81 @@ select option {
     gap: 8px;
 }
 
+.lobby-settings-menu {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    background: rgba(32, 37, 29, 0.72);
+    box-shadow: var(--shadow);
+}
+
+.lobby-settings-menu details {
+    display: grid;
+    gap: 12px;
+}
+
+.lobby-settings-menu summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--accent-strong);
+    font-weight: 800;
+    cursor: pointer;
+    list-style: none;
+}
+
+.lobby-settings-menu summary::-webkit-details-marker {
+    display: none;
+}
+
+.lobby-settings-menu summary::after {
+    content: "+";
+    color: var(--accent-strong);
+    font-size: 18px;
+    line-height: 1;
+}
+
+.lobby-settings-menu details[open] summary::after {
+    content: "-";
+}
+
+.lobby-settings-form {
+    display: grid;
+    gap: 10px;
+}
+
+.lobby-settings-form label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.lobby-settings-check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: none;
+}
+
+.lobby-settings-check input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--accent-strong);
+}
+
+.lobby-settings-status {
+    min-height: 18px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
 .settings-menu {
     border-top: 1px solid var(--line);
     padding-top: 10px;

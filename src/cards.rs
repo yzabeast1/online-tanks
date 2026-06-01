@@ -309,11 +309,21 @@ fn can_play_firing_filter(_: &Card, game_state: &GameState, req: &Request<Body>)
     return true;
 }
 
-fn can_play_repair(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool {
-    if game_state.players[game_state.current_turn_player].health >= 10 {
-        return false;
+fn healing_target_index(game_state: &GameState, player_index: usize, req: &Request<Body>) -> usize {
+    if game_state.game_settings.play_heal_on_others {
+        if let Some(target) = header_value(req, "target") {
+            if let Some(target_index) = game_state.player_index_from_name(&target) {
+                return target_index;
+            }
+        }
     }
-    return true;
+
+    return player_index;
+}
+
+fn can_play_repair(_: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
+    let target_index = healing_target_index(game_state, game_state.current_turn_player, req);
+    game_state.players[target_index].health < game_state.game_settings.max_health
 }
 
 fn can_play_radar(_: &Card, _: &GameState, _: &Request<Body>) -> bool {
@@ -387,13 +397,13 @@ fn selected_active_calculated_shooting_index(
         return None;
     }
 
-    game_state
+    return game_state
         .active_cards
         .active_calculated_shootings
         .iter()
         .position(|shooting| {
             shooting.owner != current_player_name && shooting.card_played.id == value
-        })
+        });
 }
 
 fn can_play_distractor_missile(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
@@ -633,11 +643,13 @@ fn can_play_steal(_card: &Card, game_state: &GameState, req: &Request<Body>) -> 
     return true;
 }
 
-fn play_repair(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
-    game_state.heal_player(player_index, 1);
+fn play_repair(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
+    let target_index = healing_target_index(game_state, player_index, req);
+    game_state.heal_player(target_index, 1);
 }
-fn play_repair_kit(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
-    game_state.heal_player(player_index, 3);
+fn play_repair_kit(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
+    let target_index = healing_target_index(game_state, player_index, req);
+    game_state.heal_player(target_index, 3);
 }
 fn play_landmine(card: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
     game_state.active_cards.landmine_played_by = player_index as isize;
@@ -701,7 +713,8 @@ fn play_new_model(_: &Card, game_state: &mut GameState, player_index: usize, req
         let discarded_card = game_state.players[player_index].hand.remove(discard_index);
         game_state.discard_pile.push(discarded_card);
     }
-    game_state.players[player_index].health = 10;
+    let target_index = healing_target_index(game_state, player_index, req);
+    game_state.players[target_index].health = game_state.game_settings.max_health;
 }
 fn play_painful_draw(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
     game_state.draw_card(player_index);

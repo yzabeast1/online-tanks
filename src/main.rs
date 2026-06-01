@@ -198,6 +198,10 @@ fn format_discarded_cards(discarded_cards: &[Card]) -> String {
         .join(", ")
 }
 
+fn is_targeted_healing_card(card: &Card) -> bool {
+    matches!(card.id.as_str(), "repair" | "repair-kit" | "new-model")
+}
+
 fn format_play_event_message(
     player: &str,
     card: &Card,
@@ -210,7 +214,12 @@ fn format_play_event_message(
     let mut message = format!("{} played {}", player, card.name);
 
     if let Some(target_name) = target_name {
-        message.push_str(&format!(" against {}", target_name));
+        let target_preposition = if is_targeted_healing_card(card) {
+            "on"
+        } else {
+            "against"
+        };
+        message.push_str(&format!(" {} {}", target_preposition, target_name));
         if let Some(target_damage) = card_target_damage(card) {
             message.push_str(&format!(" dealing {} damage", target_damage));
         }
@@ -800,6 +809,7 @@ struct GameStateResponse<'a> {
     discard_pile: &'a [Card],
     turn_state: &'a TurnState,
     active_cards: &'a ActiveCards,
+    game_settings: &'a GameSettings,
     chat_messages: &'a [ChatMessage],
 }
 
@@ -889,6 +899,7 @@ fn game_state_response_for_player<'a>(
         discard_pile: &game.discard_pile,
         turn_state: &game.turn_state,
         active_cards: &game.active_cards,
+        game_settings: &game.game_settings,
         chat_messages: &game.chat_messages,
     }
 }
@@ -1284,11 +1295,17 @@ async fn handle_request(
                         )),
                         Some(_) => {
                             let lobby = lobbies.remove(&joincode).unwrap();
+                            let default_game_settings = "{\"starting_hand_size\":4,\"starting_health\":10,\"max_health\":10,\"play_heal_on_others\":false,\"revive_others_with_heal\":false}";
+                            let settings_str = header_value(&req, "settings")
+                                .unwrap_or(default_game_settings.to_string());
+                            let settings: GameSettings =
+                                serde_json::from_str(&settings_str).unwrap();
                             let mut game_state = GameState::new(
                                 joincode.clone(),
                                 lobby.players.clone(),
                                 lobby.shoo_identities,
                                 lobby.shoo_pictures,
+                                settings,
                             );
                             game_state.chat_messages = lobby.chat_messages;
                             game_state.start_game();

@@ -8,6 +8,131 @@ var lobbyPlayersInterval = 0
 var lobbyStartedCheckCoooldown = 1000
 var lobbyStartedCheckInterval = 0;
 var serverip = 'yzabeast1.run.place:444'
+
+const defaultLobbySettings = {
+    starting_hand_size: 4,
+    starting_health: 10,
+    max_health: 10,
+    play_heal_on_others: false,
+    revive_others_with_heal: false,
+};
+
+function getLobbySettingsValue(id, fallback) {
+    const element = document.getElementById(id);
+    if (!element) {
+        return fallback;
+    }
+
+    if (element.type === 'checkbox') {
+        return element.checked;
+    }
+
+    const value = Number.parseInt(element.value, 10);
+    return Number.isFinite(value) ? value : fallback;
+}
+
+function readLobbySettings() {
+    const playHealOnOthers = getLobbySettingsValue('lobby-play-heal-on-others', defaultLobbySettings.play_heal_on_others);
+    return {
+        starting_hand_size: getLobbySettingsValue('lobby-starting-hand-size', defaultLobbySettings.starting_hand_size),
+        starting_health: getLobbySettingsValue('lobby-starting-health', defaultLobbySettings.starting_health),
+        max_health: getLobbySettingsValue('lobby-max-health', defaultLobbySettings.max_health),
+        play_heal_on_others: playHealOnOthers,
+        revive_others_with_heal: playHealOnOthers && getLobbySettingsValue('lobby-revive-others-with-heal', defaultLobbySettings.revive_others_with_heal),
+    };
+}
+
+function syncLobbySettingsMenuFromDefaults() {
+    const handSize = document.getElementById('lobby-starting-hand-size');
+    const startingHealth = document.getElementById('lobby-starting-health');
+    const maxHealth = document.getElementById('lobby-max-health');
+    const playHealOnOthers = document.getElementById('lobby-play-heal-on-others');
+    const reviveOthersWithHeal = document.getElementById('lobby-revive-others-with-heal');
+
+    if (handSize) handSize.value = defaultLobbySettings.starting_hand_size;
+    if (startingHealth) startingHealth.value = defaultLobbySettings.starting_health;
+    if (maxHealth) maxHealth.value = defaultLobbySettings.max_health;
+    if (playHealOnOthers) playHealOnOthers.checked = defaultLobbySettings.play_heal_on_others;
+    if (reviveOthersWithHeal) reviveOthersWithHeal.checked = defaultLobbySettings.revive_others_with_heal;
+
+    syncLobbySettingsDependency();
+}
+
+function syncLobbySettingsDependency() {
+    const playHealOnOthers = document.getElementById('lobby-play-heal-on-others');
+    const reviveOthersWithHeal = document.getElementById('lobby-revive-others-with-heal');
+
+    if (!playHealOnOthers || !reviveOthersWithHeal) {
+        return;
+    }
+
+    // Hide the revive option entirely unless healing others is enabled.
+    const reviveContainer = reviveOthersWithHeal.parentElement;
+    if (reviveContainer) {
+        reviveContainer.style.display = playHealOnOthers.checked ? '' : 'none';
+    }
+
+    // Keep the checkbox cleared when not applicable.
+    if (!playHealOnOthers.checked) {
+        reviveOthersWithHeal.checked = false;
+    }
+}
+
+function renderLobbySettingsMenu(isVisible) {
+    const settingsEl = document.getElementById('lobby-settings-menu');
+    if (!settingsEl) {
+        return;
+    }
+
+    if (!isVisible) {
+        settingsEl.style.display = 'none';
+        return;
+    }
+
+    settingsEl.style.display = 'block';
+    if (settingsEl.innerHTML.trim() !== '') {
+        return;
+    }
+
+    settingsEl.innerHTML = `
+        <details>
+            <summary>Game Settings</summary>
+            <form id="lobby-settings-form" class="lobby-settings-form">
+                <label for="lobby-starting-hand-size">Starting hand size</label>
+                <input type="number" id="lobby-starting-hand-size" min="1" step="1" value="${defaultLobbySettings.starting_hand_size}">
+                <label for="lobby-starting-health">Starting health</label>
+                <input type="number" id="lobby-starting-health" min="1" step="1" value="${defaultLobbySettings.starting_health}">
+                <label for="lobby-max-health">Max health</label>
+                <input type="number" id="lobby-max-health" min="1" step="1" value="${defaultLobbySettings.max_health}">
+                <label class="lobby-settings-check">
+                    <input type="checkbox" id="lobby-play-heal-on-others">
+                    <span>Allow heal cards to affect other players</span>
+                </label>
+                <label class="lobby-settings-check">
+                    <input type="checkbox" id="lobby-revive-others-with-heal">
+                    <span>Allow healing to revive other players</span>
+                </label>
+                <div id="lobby-settings-status" class="lobby-settings-status"></div>
+            </form>
+        </details>
+    `;
+
+    syncLobbySettingsMenuFromDefaults();
+
+    const playHealOnOthers = document.getElementById('lobby-play-heal-on-others');
+    const reviveOthersWithHeal = document.getElementById('lobby-revive-others-with-heal');
+    if (playHealOnOthers) {
+        playHealOnOthers.addEventListener('change', syncLobbySettingsDependency);
+    }
+    if (reviveOthersWithHeal) {
+        reviveOthersWithHeal.addEventListener('change', syncLobbySettingsDependency);
+    }
+}
+
+function updateLobbySettingsVisibility(isVisible) {
+    renderLobbySettingsMenu(isVisible);
+}
+
 function setStartGameVisible(isVisible) {
     document.querySelector('.start-game').style.display = isVisible ? 'inline-block' : 'none';
 }
@@ -27,6 +152,7 @@ function startSpectating() {
     document.querySelector('.lobby-screen').style.display = 'block'
     document.querySelector('.container').style.display = 'flex'
     setStartGameVisible(false)
+    updateLobbySettingsVisibility(false);
     document.getElementById('lobby-show-code').innerHTML = "JoinCode: " + joincode
     lobbyPlayersInterval = setInterval(lobbyPlayers, playersInLobbyCooldown);
     lobbyStartedCheckInterval = setInterval(lobbyStartedCheck, lobbyStartedCheckCoooldown)
@@ -56,6 +182,7 @@ async function joinLobby() {
     document.querySelector('.lobby-screen').style.display = 'block'
     document.querySelector('.container').style.display = 'flex'
     setStartGameVisible(false)
+    updateLobbySettingsVisibility(false);
     const headers = {
         'Content-Type': 'application/json',
         'username': username,
@@ -98,6 +225,7 @@ async function newGame() {
     document.querySelector('.lobby-screen').style.display = 'block'
     document.querySelector('.container').style.display = 'flex'
     setStartGameVisible(true)
+    updateLobbySettingsVisibility(true);
     const headers = {
         'Content-Type': 'application/json',
         'username': username,
@@ -135,6 +263,7 @@ function lobbyPlayers() {
             return response.json().then(data => ({ data, hostUsername }));
         })
         .then(({ data, hostUsername }) => {
+            updateLobbySettingsVisibility((hostUsername || '') === username && !spectating);
             if (data && data.length > 0) {
                 clearLobbyPlayers();
                 data.forEach(player => {
@@ -146,6 +275,7 @@ function lobbyPlayers() {
             } else {
                 console.warn('No messages found for this joincode.');
                 setStartGameVisible(false);
+                updateLobbySettingsVisibility(false);
             }
         })
         .catch(error => {
@@ -211,6 +341,7 @@ function leaveLobby() {
                 document.querySelector('.lobby-screen').style.display = 'none'
                 document.getElementById('joincode-input').value = ''
                 clearInterval(lobbyPlayersInterval)
+                updateLobbySettingsVisibility(false);
             }
         })
         .catch(error => {

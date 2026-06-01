@@ -95,11 +95,11 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: String, game_settings: GameSettings) -> Self {
         return Player {
             name,
             hand: Vec::new(),
-            health: 10,
+            health: game_settings.starting_health,
         };
     }
 }
@@ -185,6 +185,7 @@ pub struct GameState {
     pub turn_state: TurnState,
     pub active_cards: ActiveCards,
     pub chat_messages: Vec<ChatMessage>,
+    pub game_settings: GameSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -266,10 +267,11 @@ impl GameState {
         player_names: Vec<String>,
         shoo_identities: HashMap<String, String>,
         shoo_pictures: HashMap<String, String>,
+        game_settings: GameSettings,
     ) -> Self {
         let mut players = Vec::new();
         for name in player_names {
-            players.push(Player::new(name));
+            players.push(Player::new(name, game_settings));
         }
 
         return GameState {
@@ -283,6 +285,7 @@ impl GameState {
             turn_state: TurnState::new(),
             active_cards: ActiveCards::new(),
             chat_messages: Vec::new(),
+            game_settings: game_settings,
         };
     }
 
@@ -378,8 +381,8 @@ impl GameState {
 
     pub fn heal_player(&mut self, player_index: usize, heal_ammount: isize) {
         self.players[player_index].health += heal_ammount;
-        if self.players[player_index].health > 10 {
-            self.players[player_index].health = 10;
+        if self.players[player_index].health > self.game_settings.max_health {
+            self.players[player_index].health = self.game_settings.max_health;
         }
     }
 
@@ -479,7 +482,7 @@ impl GameState {
 
     pub fn draw_initial_hand(&mut self) {
         for i in 0..self.players.len() {
-            for _ in 0..4 {
+            for _ in 0..self.game_settings.starting_hand_size {
                 self.draw_card(i);
             }
         }
@@ -537,4 +540,13 @@ impl GameState {
             }
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
+pub struct GameSettings {
+    pub starting_hand_size: usize,
+    pub starting_health: isize,
+    pub max_health: isize,
+    pub play_heal_on_others: bool,
+    pub revive_others_with_heal: bool,
 }
