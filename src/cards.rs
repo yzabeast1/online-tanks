@@ -257,14 +257,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_health_hazard,
             count: 2,
         },
-        // Card {
-        //     name: "Recycle".to_string(),
-        //     id: "recycle".to_string(),
-        //     card_type: CardType::Event,
-        //     can_be_played: can_play_event,
-        //     play: stub_play,
-        //     count: 1,
-        // },
+        Card {
+            name: "Recycle".to_string(),
+            id: "recycle".to_string(),
+            card_type: CardType::Event,
+            can_be_played: can_play_recycle,
+            play: play_recycle,
+            count: 1,
+        },
     ];
 
     let mut cards: Vec<Card> = Vec::new();
@@ -327,7 +327,9 @@ fn can_play_repair(_: &Card, game_state: &GameState, req: &Request<Body>) -> boo
 }
 
 fn radar_card_count(game_state: &GameState) -> usize {
-    game_state.alive_player_count().min(game_state.draw_pile.len())
+    game_state
+        .alive_player_count()
+        .min(game_state.draw_pile.len())
 }
 
 fn selected_radar_order(req: &Request<Body>, game_state: &GameState) -> Option<Vec<usize>> {
@@ -690,6 +692,29 @@ fn can_play_steal(_card: &Card, game_state: &GameState, req: &Request<Body>) -> 
     return true;
 }
 
+fn can_play_recycle(_card: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
+    if game_state.pending_recycle.is_some() {
+        return false;
+    }
+
+    let has_other_player_with_cards =
+        game_state
+            .players
+            .iter()
+            .enumerate()
+            .any(|(player_index, player)| {
+                player_index != game_state.current_turn_player
+                    && player.health > 0
+                    && !player.hand.is_empty()
+            });
+
+    if !has_other_player_with_cards {
+        return false;
+    }
+
+    return can_play_event(_card, game_state, req);
+}
+
 fn play_repair(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
     let target_index = healing_target_index(game_state, player_index, req);
     game_state.heal_player(target_index, 1);
@@ -727,6 +752,25 @@ fn play_steal(_: &Card, game_state: &mut GameState, player_index: usize, req: &R
     let stolen_card = hand[card_index].clone();
     hand.remove(card_index);
     game_state.players[player_index].hand.push(stolen_card);
+}
+fn play_recycle(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
+    let awaiting_discards = game_state
+        .players
+        .iter()
+        .enumerate()
+        .filter(|(other_player_index, player)| {
+            *other_player_index != player_index && player.health > 0 && !player.hand.is_empty()
+        })
+        .map(|(_, player)| player.name.clone())
+        .collect::<Vec<_>>();
+
+    if !awaiting_discards.is_empty() {
+        game_state.pending_recycle = Some(PendingRecycle {
+            player: game_state.players[player_index].name.clone(),
+            awaiting_discards,
+            cards: Vec::new(),
+        });
+    }
 }
 fn play_draw_2(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
     game_state.draw_card(player_index);

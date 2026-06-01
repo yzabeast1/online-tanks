@@ -89,7 +89,7 @@ pub struct Card {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Player {
     pub name: String,
-    #[serde(skip)]
+    #[serde(default)]
     pub hand: Vec<Card>,
     pub health: isize,
 }
@@ -171,6 +171,14 @@ impl ActiveCards {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PendingRecycle {
+    pub player: String,
+    #[serde(default)]
+    pub awaiting_discards: Vec<String>,
+    pub cards: Vec<Card>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GameState {
     pub players: Vec<Player>,
@@ -184,6 +192,8 @@ pub struct GameState {
     pub discard_pile: Vec<Card>,
     pub turn_state: TurnState,
     pub active_cards: ActiveCards,
+    #[serde(default)]
+    pub pending_recycle: Option<PendingRecycle>,
     pub chat_messages: Vec<ChatMessage>,
     pub game_settings: GameSettings,
 }
@@ -284,6 +294,7 @@ impl GameState {
             discard_pile: Vec::new(),
             turn_state: TurnState::new(),
             active_cards: ActiveCards::new(),
+            pending_recycle: None,
             chat_messages: Vec::new(),
             game_settings: game_settings,
         };
@@ -573,6 +584,14 @@ impl GameState {
             if let Some(template) = template_cards.iter().find(|t| t.id == card.id) {
                 card.can_be_played = template.can_be_played;
                 card.play = template.play;
+            }
+        }
+        if let Some(pending_recycle) = &mut self.pending_recycle {
+            for card in &mut pending_recycle.cards {
+                if let Some(template) = template_cards.iter().find(|t| t.id == card.id) {
+                    card.can_be_played = template.can_be_played;
+                    card.play = template.play;
+                }
             }
         }
     }

@@ -724,6 +724,177 @@ fn play_card_response(
     )
 }
 
+fn selected_response_hand_index(value: &str, hand: &[Card]) -> Option<usize> {
+    if let Some((index, card_id)) = value.split_once(':') {
+        let index = index.parse::<usize>().ok()?;
+        if hand.get(index).is_some_and(|card| card.id == card_id) {
+            return Some(index);
+        }
+        if index > 0 && hand.get(index - 1).is_some_and(|card| card.id == card_id) {
+            return Some(index - 1);
+        }
+        return hand.iter().position(|card| card.id == card_id);
+    }
+
+    if let Ok(index) = value.parse::<usize>() {
+        return (index < hand.len()).then_some(index);
+    }
+
+    hand.iter().position(|card| card.id == value)
+}
+
+fn choose_recycle_discard_response(
+    req: &Request<Body>,
+    state: &Arc<ServerState>,
+    shoo_user_id: Option<&str>,
+) -> Response<Body> {
+    let joincode = header_value(req, "joincode");
+    let username = header_value(req, "username");
+    let card_value = header_value(req, "discardcard");
+
+    let (Some(joincode), Some(username), Some(card_value)) = (joincode, username, card_value)
+    else {
+        return text_response(
+            StatusCode::BAD_REQUEST,
+            "missing joincode, username, or discardcard",
+        );
+    };
+
+    let mut games = lock_or_recover(&state.games, "games");
+    let Some(game) = games.get_mut(&joincode) else {
+        return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
+    };
+
+    if !can_act_as_player(&game.shoo_identities, &username, shoo_user_id) {
+        return text_response(StatusCode::FORBIDDEN, "not authorized for player");
+    }
+
+    let Some(pending_recycle) = game.pending_recycle.as_ref() else {
+        return text_response(StatusCode::BAD_REQUEST, "no pending recycle");
+    };
+
+    if !pending_recycle
+        .awaiting_discards
+        .iter()
+        .any(|player| player == &username)
+    {
+        return text_response(StatusCode::FORBIDDEN, "not your recycle discard");
+    }
+
+    let Some(player_index) = game.player_index_from_name(&username) else {
+        return text_response(StatusCode::NOT_FOUND, "player not found");
+    };
+    let Some(discard_index) =
+        selected_response_hand_index(&card_value, &game.players[player_index].hand)
+    else {
+        return text_response(StatusCode::BAD_REQUEST, "invalid discard card");
+    };
+
+    let discarded_card = game.players[player_index].hand.remove(discard_index);
+    let discarded_card_name = discarded_card.name.clone();
+    let Some(pending_recycle) = game.pending_recycle.as_mut() else {
+        return text_response(StatusCode::BAD_REQUEST, "no pending recycle");
+    };
+    pending_recycle.cards.push(discarded_card);
+    pending_recycle
+        .awaiting_discards
+        .retain(|player| player != &username);
+    game.push_server_chat_message(format!(
+        "{} discarded {} for Recycle",
+        username, discarded_card_name
+    ));
+
+    json_response(
+        StatusCode::OK,
+        serde_json::to_string(&serde_json::json!({"status": "discarded"})).unwrap(),
+    )
+}
+
+fn choose_recycle_card_response(
+    req: &Request<Body>,
+    state: &Arc<ServerState>,
+    shoo_user_id: Option<&str>,
+) -> Response<Body> {
+    let joincode = header_value(req, "joincode");
+    let username = header_value(req, "username");
+    let card_value = header_value(req, "recyclecard");
+
+    let (Some(joincode), Some(username), Some(card_value)) = (joincode, username, card_value)
+    else {
+        return text_response(
+            StatusCode::BAD_REQUEST,
+            "missing joincode, username, or recyclecard",
+        );
+    };
+
+    let mut games = lock_or_recover(&state.games, "games");
+    let Some(game) = games.get_mut(&joincode) else {
+        return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
+    };
+
+    if !can_act_as_player(&game.shoo_identities, &username, shoo_user_id) {
+        return text_response(StatusCode::FORBIDDEN, "not authorized for player");
+    }
+
+    let Some(pending_recycle) = game.pending_recycle.as_ref() else {
+        return text_response(StatusCode::BAD_REQUEST, "no pending recycle choice");
+    };
+
+    if pending_recycle.player != username {
+        return text_response(StatusCode::FORBIDDEN, "not your recycle choice");
+    }
+
+    if !pending_recycle.awaiting_discards.is_empty() {
+        return text_response(StatusCode::BAD_REQUEST, "waiting for recycle discards");
+    }
+
+    let selected_index = if let Some((index, card_id)) = card_value.split_once(':') {
+        let Ok(index) = index.parse::<usize>() else {
+            return text_response(StatusCode::BAD_REQUEST, "invalid recycle card");
+        };
+        if !pending_recycle
+            .cards
+            .get(index)
+            .is_some_and(|card| card.id == card_id)
+        {
+            return text_response(StatusCode::BAD_REQUEST, "invalid recycle card");
+        }
+        index
+    } else if let Ok(index) = card_value.parse::<usize>() {
+        if index >= pending_recycle.cards.len() {
+            return text_response(StatusCode::BAD_REQUEST, "invalid recycle card");
+        }
+        index
+    } else {
+        let Some(index) = pending_recycle
+            .cards
+            .iter()
+            .position(|card| card.id == card_value)
+        else {
+            return text_response(StatusCode::BAD_REQUEST, "invalid recycle card");
+        };
+        index
+    };
+
+    let Some(mut pending_recycle) = game.pending_recycle.take() else {
+        return text_response(StatusCode::BAD_REQUEST, "no pending recycle choice");
+    };
+    let recycled_card = pending_recycle.cards.remove(selected_index);
+    let recycled_card_name = recycled_card.name.clone();
+    game.discard_pile.extend(pending_recycle.cards);
+
+    let Some(player_index) = game.player_index_from_name(&username) else {
+        return text_response(StatusCode::NOT_FOUND, "player not found");
+    };
+    game.players[player_index].hand.push(recycled_card);
+    game.push_server_chat_message(format!("{} recycled {}", username, recycled_card_name));
+
+    json_response(
+        StatusCode::OK,
+        serde_json::to_string(&serde_json::json!({"status": "recycled"})).unwrap(),
+    )
+}
+
 fn activate_calculated_shooting_response(
     req: &Request<Body>,
     state: &Arc<ServerState>,
@@ -824,6 +995,7 @@ struct GameStateResponse<'a> {
     draw_pile_count: usize,
     radar_cards: Vec<Card>,
     discard_pile: &'a [Card],
+    pending_recycle: &'a Option<PendingRecycle>,
     turn_state: &'a TurnState,
     active_cards: &'a ActiveCards,
     game_settings: &'a GameSettings,
@@ -966,6 +1138,7 @@ fn game_state_response_for_player<'a>(
         draw_pile_count: game.draw_pile.len(),
         radar_cards,
         discard_pile: &game.discard_pile,
+        pending_recycle: &game.pending_recycle,
         turn_state: &game.turn_state,
         active_cards: &game.active_cards,
         game_settings: &game.game_settings,
@@ -1538,6 +1711,12 @@ async fn handle_request(
                                     "not authorized for player",
                                 ));
                             }
+                            if game.pending_recycle.is_some() {
+                                return Ok(text_response(
+                                    StatusCode::BAD_REQUEST,
+                                    "pending recycle choice",
+                                ));
+                            }
                             game.next_turn();
                             let body = serde_json::to_string(&serde_json::json!({"current_turn_player": game.current_turn_player})).unwrap();
                             Ok(json_response(StatusCode::OK, body))
@@ -1755,6 +1934,18 @@ async fn handle_request(
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
             Ok(play_card_response(&req, &state, shoo_user_id))
+        }
+        (&Method::POST, "/chooseRecycleCard") | (&Method::POST, "/chooserecyclecard") => {
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
+            Ok(choose_recycle_card_response(&req, &state, shoo_user_id))
+        }
+        (&Method::POST, "/chooseRecycleDiscard") | (&Method::POST, "/chooserecyclediscard") => {
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
+            Ok(choose_recycle_discard_response(&req, &state, shoo_user_id))
         }
         (&Method::POST, "/activateCalculatedShooting") => {
             let shoo_user_id = shoo_identity

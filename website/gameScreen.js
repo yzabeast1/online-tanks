@@ -246,6 +246,7 @@ function renderGame() {
                 if (opponentGrid.children.length > 0) {
                     gameDiv.appendChild(opponentGrid);
                 }
+                showRecycleChoicePopup();
                 renderedData = gameData
             }
         }

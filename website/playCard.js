@@ -70,6 +70,7 @@ function canPlayCardNow(card) {
 
     if (!isMyTurn) return false;
     if (cardNeedsTarget(card) && !hasValidTargetsForCard(card)) return false;
+    if (card.id === 'recycle' && !renderedData.players.some(player => player.health > 0 && player.name !== username && player.hand_count > 0)) return false;
     if (isDistractorMissile && (renderedData.turn_state.shooting_locked || !shootingAllowed || !hasQueuedDistractorTarget || renderedData.turn_state.shooting_card_played > renderedData.turn_state.more_ammo_played)) return false;
     if (isColdWar && renderedData.active_cards.active_calculated_shootings.length === 0) return false;
     if (isShooting && !isDistractorMissile && (renderedData.turn_state.shooting_locked || !shootingAllowed || renderedData.turn_state.shooting_card_played >= maxShooting)) return false;
@@ -185,6 +186,8 @@ function handleHandCardClick(card, cardElement) {
     playCard();
 }
 function triggerActions(actions) {
+    setPopupRequired(false);
+    document.getElementById('playCardBtn').innerText = 'Play Card';
     const popupContent = document.getElementById('popupContent');
     popupContent.innerHTML = '';  // Clear previous popup content
 
@@ -401,9 +404,17 @@ function showPopup() {
     modal.style.display = 'flex';
 }
 
+function setPopupRequired(required) {
+    const modal = document.getElementById('popupModal');
+    const closeButton = modal.querySelector('.close-btn');
+    modal.dataset.required = required ? 'true' : 'false';
+    if (closeButton) closeButton.style.display = required ? 'none' : 'block';
+}
+
 // Close popup
 function closePopup() {
     const modal = document.getElementById('popupModal');
+    if (modal.dataset.required === 'true') return;
     modal.style.display = 'none';
 }
 
@@ -438,6 +449,7 @@ function sendPlayedCardToServer() {
 }
 
 function sendPlayedCardHeaders(extraHeaders) {
+    setPopupRequired(false);
     var headers = {
         joincode: joincode,
         username: username,
@@ -449,6 +461,115 @@ function sendPlayedCardHeaders(extraHeaders) {
     // You can now process the selected player and discard options here
     closePopup();  // Close the popup after playing the card
     closeModal();
+}
+
+function showRecycleChoicePopup() {
+    const pendingRecycle = gameData.pending_recycle;
+    if (!pendingRecycle) return;
+
+    if (pendingRecycle.awaiting_discards?.includes(username)) {
+        showRecycleDiscardPopup();
+        return;
+    }
+
+    if (pendingRecycle.player !== username || pendingRecycle.awaiting_discards?.length > 0) return;
+
+    if (document.getElementById('recycleCardDropdown')) {
+        setPopupRequired(true);
+        showPopup();
+        return;
+    }
+
+    const popupContent = document.getElementById('popupContent');
+    popupContent.innerHTML = '';
+
+    const label = document.createElement('label');
+    label.innerText = 'Choose a card to recycle: ';
+    popupContent.appendChild(label);
+
+    const dropdown = document.createElement('select');
+    dropdown.id = 'recycleCardDropdown';
+    pendingRecycle.cards.forEach((card, index) => {
+        const option = document.createElement('option');
+        option.value = `${index}:${card.id}`;
+        option.text = card.name;
+        dropdown.appendChild(option);
+    });
+    popupContent.appendChild(dropdown);
+    popupContent.appendChild(document.createElement('br'));
+
+    const playButton = document.getElementById('playCardBtn');
+    playButton.onclick = sendRecycleChoiceToServer;
+    playButton.innerText = 'Choose Card';
+    playButton.style.display = pendingRecycle.cards.length > 0 ? 'block' : 'none';
+    setPopupRequired(true);
+    showPopup();
+}
+
+function showRecycleDiscardPopup() {
+    if (document.getElementById('recycleDiscardDropdown')) {
+        setPopupRequired(true);
+        showPopup();
+        return;
+    }
+
+    const myPlayer = gameData.players.find(player => player.name === username);
+    if (!myPlayer || myPlayer.hand.length === 0) return;
+
+    const popupContent = document.getElementById('popupContent');
+    popupContent.innerHTML = '';
+
+    const label = document.createElement('label');
+    label.innerText = 'Choose a card to discard for Recycle: ';
+    popupContent.appendChild(label);
+
+    const dropdown = document.createElement('select');
+    dropdown.id = 'recycleDiscardDropdown';
+    myPlayer.hand.forEach((card, index) => {
+        const option = document.createElement('option');
+        option.value = `${index}:${card.id}`;
+        option.text = card.name;
+        dropdown.appendChild(option);
+    });
+    popupContent.appendChild(dropdown);
+    popupContent.appendChild(document.createElement('br'));
+
+    const playButton = document.getElementById('playCardBtn');
+    playButton.onclick = sendRecycleDiscardToServer;
+    playButton.innerText = 'Discard Card';
+    playButton.style.display = 'block';
+    setPopupRequired(true);
+    showPopup();
+}
+
+function sendRecycleDiscardToServer() {
+    const discardCard = document.getElementById('recycleDiscardDropdown')?.value;
+    if (!discardCard) return;
+
+    postWithFallback(`https://${serverip}/chooseRecycleDiscard`, {
+        joincode: joincode,
+        username: username,
+        discardcard: discardCard,
+        ...shooHeaders(shooAccountDetails()),
+    });
+    setPopupRequired(false);
+    document.getElementById('playCardBtn').innerText = 'Play Card';
+    closePopup();
+}
+
+function sendRecycleChoiceToServer() {
+    const recycleCard = document.getElementById('recycleCardDropdown')?.value;
+    if (!recycleCard) return;
+
+    postWithFallback(`https://${serverip}/chooseRecycleCard`, {
+        joincode: joincode,
+        username: username,
+        recyclecard: recycleCard,
+        ...shooHeaders(shooAccountDetails()),
+    });
+    setPopupRequired(false);
+    document.getElementById('playCardBtn').innerText = 'Play Card';
+    closePopup();
 }
 function findCardInPlayerHand(cardId, username) {
     // Get the player's hand
