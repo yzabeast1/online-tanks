@@ -94,16 +94,13 @@ function shooHeaders(account) {
     }
 
     return {
-        shoo_user_id: account.userId,
-        shoo_picture: shooEffectivePicture(account) || '',
+        shoo_token: account.token,
     };
 }
 
 function shooSettingsHeaders(account) {
     return {
         ...shooHeaders(account),
-        shoo_default_username: shooDefaultUsername(account),
-        shoo_default_picture: shooDefaultPicture(account),
     };
 }
 

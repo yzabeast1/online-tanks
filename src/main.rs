@@ -12,9 +12,10 @@ use std::{
 
 use hyper::service::service_fn;
 use hyper::{Body, Method, Request, Response, StatusCode};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 
@@ -22,6 +23,8 @@ use crate::cards::all_cards;
 
 const WEBSITE_DIR: &str = "./website";
 const IMAGES_DIR: &str = "./images";
+const SHOO_BASE_URL: &str = "https://shoo.dev";
+const SHOO_ISSUER: &str = "https://shoo.dev";
 
 async fn serve_file(path: &str, content_type: &str) -> Result<Response<Body>, Infallible> {
     match tokio::fs::read(path).await {
@@ -836,6 +839,24 @@ struct ShooSettingsResponse {
     has_custom_picture: bool,
 }
 
+#[derive(Clone, Debug)]
+struct VerifiedShooIdentity {
+    user_id: String,
+    default_username: String,
+    default_picture: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ShooTokenClaims {
+    pairwise_sub: String,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    picture: Option<String>,
+}
+
 #[derive(Serialize)]
 struct PlayerResponse<'a> {
     name: &'a str,
@@ -910,6 +931,67 @@ fn normalized_header_value(req: &Request<Body>, name: &str) -> String {
         .unwrap_or_default()
 }
 
+fn shoo_audience(settings: &ServerSettings) -> String {
+    format!("origin:{}", server_connect_url(settings))
+}
+
+async fn verify_shoo_identity(
+    req: &Request<Body>,
+    settings: &ServerSettings,
+) -> Result<Option<VerifiedShooIdentity>, String> {
+    let Some(token) = header_value(req, "shoo_token").filter(|token| !token.trim().is_empty()) else {
+        return Ok(None);
+    };
+
+    let header = decode_header(&token).map_err(|err| format!("invalid shoo token: {}", err))?;
+    if header.alg != Algorithm::ES256 {
+        return Err("invalid shoo token algorithm".to_string());
+    }
+
+    let Some(kid) = header.kid else {
+        return Err("shoo token missing key id".to_string());
+    };
+
+    let jwks: JwkSet = reqwest::get(format!("{}/.well-known/jwks.json", SHOO_BASE_URL))
+        .await
+        .map_err(|err| format!("failed to fetch Shoo keys: {}", err))?
+        .error_for_status()
+        .map_err(|err| format!("failed to fetch Shoo keys: {}", err))?
+        .json()
+        .await
+        .map_err(|err| format!("failed to parse Shoo keys: {}", err))?;
+
+    let jwk = jwks
+        .find(&kid)
+        .ok_or_else(|| "shoo token key not found".to_string())?;
+    let decoding_key =
+        DecodingKey::from_jwk(jwk).map_err(|err| format!("invalid Shoo key: {}", err))?;
+
+    let mut validation = Validation::new(Algorithm::ES256);
+    validation.set_issuer(&[SHOO_ISSUER]);
+    validation.set_audience(&[shoo_audience(settings)]);
+
+    let token = decode::<ShooTokenClaims>(&token, &decoding_key, &validation)
+        .map_err(|err| format!("invalid shoo token: {}", err))?;
+    let claims = token.claims;
+    if claims.pairwise_sub.trim().is_empty() {
+        return Err("shoo token missing pairwise_sub".to_string());
+    }
+
+    Ok(Some(VerifiedShooIdentity {
+        user_id: claims.pairwise_sub,
+        default_username: claims
+            .name
+            .or(claims.email)
+            .unwrap_or_else(|| "".to_string()),
+        default_picture: claims.picture.unwrap_or_default(),
+    }))
+}
+
+fn shoo_bad_request(error: String) -> Response<Body> {
+    text_response(StatusCode::UNAUTHORIZED, error)
+}
+
 fn shoo_settings_response(
     state: &Arc<ServerState>,
     shoo_user_id: &str,
@@ -971,6 +1053,19 @@ async fn handle_request(
     server_settings: ServerSettings,
 ) -> Result<Response<Body>, Infallible> {
     let path = req.uri().path().to_string();
+    let shoo_identity = match verify_shoo_identity(&req, &server_settings).await {
+        Ok(identity) => identity,
+        Err(error) => return Ok(shoo_bad_request(error)),
+    };
+    if shoo_identity.is_none()
+        && (req.headers().contains_key("shoo_user_id")
+            || req.headers().contains_key("shoo_picture")
+            || req.headers().contains_key("shoo_default_username")
+            || req.headers().contains_key("shoo_default_picture"))
+    {
+        return Ok(shoo_bad_request("missing shoo_token".to_string()));
+    }
+
     match (req.method(), path.as_str()) {
         (&Method::GET, "/") | (&Method::GET, "/index.html") | (&Method::GET, "/shoo/callback") => {
             let p = format!("{}/index.html", WEBSITE_DIR);
@@ -995,34 +1090,30 @@ async fn handle_request(
         (&Method::GET, "/lobby.js") => serve_lobby_js(&server_settings).await,
         (&Method::GET, "/checkOnline") => Ok(text_response(StatusCode::OK, "Online")),
         (&Method::GET, "/shooSettings") => {
-            let shoo_user_id = header_value(&req, "shoo_user_id");
-            match shoo_user_id {
-                Some(shoo_user_id) => {
-                    let default_username = normalized_header_value(&req, "shoo_default_username");
-                    let default_picture = normalized_header_value(&req, "shoo_default_picture");
+            match shoo_identity.as_ref() {
+                Some(shoo_identity) => {
                     Ok(json_response(
                         StatusCode::OK,
                         serde_json::to_string(&shoo_settings_response(
                             &state,
-                            &shoo_user_id,
-                            default_username,
-                            default_picture,
+                            &shoo_identity.user_id,
+                            shoo_identity.default_username.clone(),
+                            shoo_identity.default_picture.clone(),
                         ))
                         .unwrap(),
                     ))
                 }
                 None => Ok(text_response(
                     StatusCode::BAD_REQUEST,
-                    "missing shoo_user_id",
+                    "missing shoo_token",
                 )),
             }
         }
         (&Method::POST, "/shooSettings") => {
-            let shoo_user_id = header_value(&req, "shoo_user_id");
-            match shoo_user_id {
-                Some(shoo_user_id) => {
-                    let default_username = normalized_header_value(&req, "shoo_default_username");
-                    let default_picture = normalized_header_value(&req, "shoo_default_picture");
+            match shoo_identity.as_ref() {
+                Some(shoo_identity) => {
+                    let default_username = shoo_identity.default_username.clone();
+                    let default_picture = shoo_identity.default_picture.clone();
                     let username = normalized_header_value(&req, "settings_username");
                     let picture = normalized_header_value(&req, "settings_picture");
 
@@ -1040,10 +1131,10 @@ async fn handle_request(
                     {
                         let mut settings = lock_or_recover(&state.shoo_settings, "shoo_settings");
                         if custom_username.is_none() && custom_picture.is_none() {
-                            settings.remove(&shoo_user_id);
+                            settings.remove(&shoo_identity.user_id);
                         } else {
                             settings.insert(
-                                shoo_user_id.clone(),
+                                shoo_identity.user_id.clone(),
                                 ShooUserSettings {
                                     username: custom_username,
                                     picture: custom_picture,
@@ -1056,7 +1147,7 @@ async fn handle_request(
                         StatusCode::OK,
                         serde_json::to_string(&shoo_settings_response(
                             &state,
-                            &shoo_user_id,
+                            &shoo_identity.user_id,
                             default_username,
                             default_picture,
                         ))
@@ -1065,14 +1156,17 @@ async fn handle_request(
                 }
                 None => Ok(text_response(
                     StatusCode::BAD_REQUEST,
-                    "missing shoo_user_id",
+                    "missing shoo_token",
                 )),
             }
         }
         (&Method::POST, "/createGame") => {
             let username = header_value(&req, "username");
-            let shoo_user_id = header_value(&req, "shoo_user_id");
-            let mut shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
+            let shoo_user_id = shoo_identity.as_ref().map(|identity| identity.user_id.clone());
+            let mut shoo_picture = shoo_identity
+                .as_ref()
+                .map(|identity| identity.default_picture.clone())
+                .unwrap_or_default();
             if let Some(shoo_user_id) = shoo_user_id.as_ref() {
                 if let Some(custom_picture) = lock_or_recover(&state.shoo_settings, "shoo_settings")
                     .get(shoo_user_id)
@@ -1104,8 +1198,11 @@ async fn handle_request(
         (&Method::POST, "/joinGame") => {
             let username = header_value(&req, "username");
             let joincode = header_value(&req, "joincode");
-            let shoo_user_id = header_value(&req, "shoo_user_id");
-            let mut shoo_picture = header_value(&req, "shoo_picture").unwrap_or_default();
+            let shoo_user_id = shoo_identity.as_ref().map(|identity| identity.user_id.clone());
+            let mut shoo_picture = shoo_identity
+                .as_ref()
+                .map(|identity| identity.default_picture.clone())
+                .unwrap_or_default();
             if let Some(shoo_user_id) = shoo_user_id.as_ref() {
                 if let Some(custom_picture) = lock_or_recover(&state.shoo_settings, "shoo_settings")
                     .get(shoo_user_id)
@@ -1145,16 +1242,16 @@ async fn handle_request(
             }
         }
         (&Method::GET, "/myGames") => {
-            let shoo_user_id = header_value(&req, "shoo_user_id");
-            match shoo_user_id {
-                Some(shoo_user_id) => {
+            match shoo_identity.as_ref() {
+                Some(shoo_identity) => {
+                    let shoo_user_id = &shoo_identity.user_id;
                     let mut games_for_user = Vec::new();
 
                     {
                         let lobbies = lock_or_recover(&state.lobbies, "lobbies");
                         for (joincode, lobby) in lobbies.iter() {
                             for (username, identity) in lobby.shoo_identities.iter() {
-                                if identity == &shoo_user_id {
+                                if identity == shoo_user_id {
                                     games_for_user.push(MyGameResponse {
                                         joincode: joincode.clone(),
                                         username: username.clone(),
@@ -1178,7 +1275,7 @@ async fn handle_request(
                         let games = lock_or_recover(&state.games, "games");
                         for (joincode, game) in games.iter() {
                             for (username, identity) in game.shoo_identities.iter() {
-                                if identity == &shoo_user_id {
+                                if identity == shoo_user_id {
                                     games_for_user.push(MyGameResponse {
                                         joincode: joincode.clone(),
                                         username: username.clone(),
@@ -1211,7 +1308,7 @@ async fn handle_request(
                 }
                 None => Ok(text_response(
                     StatusCode::BAD_REQUEST,
-                    "missing shoo_user_id",
+                    "missing shoo_token",
                 )),
             }
         }
@@ -1358,7 +1455,7 @@ async fn handle_request(
         (&Method::GET, "/gameState") => {
             let joincode: Option<String> = header_value(&req, "joincode");
             let username: Option<String> = header_value(&req, "username");
-            let shoo_user_id: Option<String> = header_value(&req, "shoo_user_id");
+            let shoo_user_id = shoo_identity.as_ref().map(|identity| identity.user_id.as_str());
             match joincode {
                 Some(joincode) => {
                     let mut games = lock_or_recover(&state.games, "games");
@@ -1367,7 +1464,7 @@ async fn handle_request(
                             let body = serde_json::to_string(&game_state_response_for_player(
                                 game,
                                 username.as_deref(),
-                                shoo_user_id.as_deref(),
+                                shoo_user_id,
                             ))
                             .unwrap();
                             Ok(json_response(StatusCode::OK, body))
