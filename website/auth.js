@@ -444,11 +444,13 @@ function renderMyShooGames(games) {
 
 async function removeShooGame(game) {
     try {
+        const account = shooAccountDetails();
         const response = await fetch(`https://${serverip}/quitGame`, {
             method: 'POST',
             headers: {
                 'joincode': game.joincode,
                 'username': game.username,
+                ...shooHeaders(account),
             },
         });
 

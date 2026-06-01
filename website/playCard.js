@@ -365,7 +365,8 @@ function sendPlayedCardHeaders(extraHeaders) {
         joincode: joincode,
         username: username,
         cardid: cardSelected,
-        ...extraHeaders
+        ...extraHeaders,
+        ...shooHeaders(shooAccountDetails()),
     }
     postWithFallback(`https://${serverip}/playcard`, headers)
     // You can now process the selected player and discard options here

@@ -37,7 +37,8 @@ function sendMessage() {
         'Content-Type': 'application/json',
         'joincode': joincode,  // Use dynamic joincode
         'username': username,  // Use dynamic username
-        'text': message
+        'text': message,
+        ...shooHeaders(shooAccountDetails()),
     };
 
     // Send the message to the server with headers

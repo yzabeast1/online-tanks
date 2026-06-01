@@ -286,7 +286,11 @@ function joinStartedGame() {
     gameStateInterval = setInterval(fetchGameState, gameStateCooldown);
 }
 function endTurn() {
-    postWithFallbackNoJSON(`https://${serverip}/endTurn`, { joincode: joincode, username: username })
+    postWithFallbackNoJSON(`https://${serverip}/endTurn`, {
+        joincode: joincode,
+        username: username,
+        ...shooHeaders(shooAccountDetails()),
+    })
 }
 
 const dragBar = document.getElementById('dragBar');
@@ -476,7 +480,8 @@ function activateCalculatedShooting() {
     var headers = {
         joincode: joincode,
         username: username,
-        cardid: cardid
+        cardid: cardid,
+        ...shooHeaders(shooAccountDetails()),
     }
     if (selectedPlayer) headers.target = selectedPlayer
     if (decisionMissileAction) headers.decision_action = decisionMissileAction
