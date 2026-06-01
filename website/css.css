@@ -844,6 +844,45 @@ label[for="show-deck-checkbox"] {
     box-shadow: none;
 }
 
+.radar-order-list {
+    display: grid;
+    gap: 10px;
+    min-width: min(520px, 82vw);
+}
+
+.radar-order-card {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 8px;
+    border: 1px solid rgba(244, 239, 224, 0.18);
+    border-radius: 8px;
+    background: rgba(18, 22, 16, 0.88);
+}
+
+.radar-order-card img {
+    width: 54px;
+    height: auto;
+    aspect-ratio: 2 / 3;
+    border-radius: 5px;
+    object-fit: cover;
+}
+
+.radar-order-card span {
+    overflow-wrap: anywhere;
+    font-weight: 700;
+}
+
+.radar-order-controls {
+    display: flex;
+    gap: 6px;
+}
+
+.radar-order-controls button {
+    min-width: 54px;
+}
+
 img {
     width: 100%;
     height: 100%;

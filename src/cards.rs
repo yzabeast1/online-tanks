@@ -25,14 +25,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_repair,
             count: 6,
         },
-        // Card {
-        //     name: "Radar".to_string(),
-        //     id: "radar".to_string(),
-        //     card_type: CardType::Support,
-        //     can_be_played: can_play_radar,
-        //     play: stub_play,
-        //     count: 2,
-        // },
+        Card {
+            name: "Radar".to_string(),
+            id: "radar".to_string(),
+            card_type: CardType::Support,
+            can_be_played: can_play_radar,
+            play: play_radar,
+            count: 2,
+        },
         Card {
             name: "Repair Kit".to_string(),
             id: "repair-kit".to_string(),
@@ -326,8 +326,46 @@ fn can_play_repair(_: &Card, game_state: &GameState, req: &Request<Body>) -> boo
     game_state.players[target_index].health < game_state.game_settings.max_health
 }
 
-fn can_play_radar(_: &Card, _: &GameState, _: &Request<Body>) -> bool {
-    return true;
+fn radar_card_count(game_state: &GameState) -> usize {
+    game_state.alive_player_count().min(game_state.draw_pile.len())
+}
+
+fn selected_radar_order(req: &Request<Body>, game_state: &GameState) -> Option<Vec<usize>> {
+    let value = header_value(req, "radar_order")?;
+    let order = serde_json::from_str::<Vec<usize>>(&value).ok()?;
+    let card_count = radar_card_count(game_state);
+
+    if order.len() != card_count {
+        return None;
+    }
+
+    let mut sorted_order = order.clone();
+    sorted_order.sort_unstable();
+    if sorted_order != (0..card_count).collect::<Vec<_>>() {
+        return None;
+    }
+
+    Some(order)
+}
+
+fn can_play_radar(_: &Card, game_state: &GameState, req: &Request<Body>) -> bool {
+    selected_radar_order(req, game_state).is_some()
+}
+
+fn play_radar(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
+    let Some(order) = selected_radar_order(req, game_state) else {
+        return;
+    };
+    let card_count = order.len();
+    let split_index = game_state.draw_pile.len() - card_count;
+    let top_cards = game_state.draw_pile.split_off(split_index);
+    let reordered_top_cards = order
+        .into_iter()
+        .map(|top_index| top_cards[card_count - 1 - top_index].clone())
+        .rev()
+        .collect::<Vec<_>>();
+
+    game_state.draw_pile.extend(reordered_top_cards);
 }
 
 fn selected_any_active_calculated_shooting_index(

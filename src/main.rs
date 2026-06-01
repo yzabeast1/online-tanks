@@ -822,6 +822,7 @@ struct GameStateResponse<'a> {
     id: &'a str,
     current_turn_player: usize,
     draw_pile_count: usize,
+    radar_cards: Vec<Card>,
     discard_pile: &'a [Card],
     turn_state: &'a TurnState,
     active_cards: &'a ActiveCards,
@@ -917,6 +918,28 @@ fn game_state_response_for_player<'a>(
     username: Option<&str>,
     shoo_user_id: Option<&str>,
 ) -> GameStateResponse<'a> {
+    let can_preview_radar = game
+        .players
+        .get(game.current_turn_player)
+        .is_some_and(|player| {
+            Some(player.name.as_str()) == username
+                && can_view_player_private_data(game, &player.name, username, shoo_user_id)
+                && player.health > 0
+                && player.hand.iter().any(|card| card.id == "radar")
+        });
+    let radar_card_count = if can_preview_radar {
+        game.alive_player_count().min(game.draw_pile.len())
+    } else {
+        0
+    };
+    let radar_cards = game
+        .draw_pile
+        .iter()
+        .rev()
+        .take(radar_card_count)
+        .cloned()
+        .collect();
+
     let players = game
         .players
         .iter()
@@ -941,6 +964,7 @@ fn game_state_response_for_player<'a>(
         id: &game.id,
         current_turn_player: game.current_turn_player,
         draw_pile_count: game.draw_pile.len(),
+        radar_cards,
         discard_pile: &game.discard_pile,
         turn_state: &game.turn_state,
         active_cards: &game.active_cards,

@@ -99,6 +99,9 @@ function actionsForCard(card) {
     if (card.id === 'helpful-hand') {
         actions.push('discardcard');
     }
+    if (card.id === 'radar') {
+        actions.push('radar_order');
+    }
 
     return actions;
 }
@@ -194,10 +197,82 @@ function triggerActions(actions) {
             createQueuedCardDropdown(username);
         } else if (action == 'firing_filter_type') {
             createFiringFilterTypeDropdown();
+        } else if (action == 'radar_order') {
+            createRadarOrderControls();
         }
     });
 
     showPopup();  // Show the popup after generating content
+}
+function createRadarOrderControls() {
+    const popupContent = document.getElementById('popupContent');
+    const radarCards = gameData.radar_cards || [];
+
+    const list = document.createElement('div');
+    list.id = 'radarOrderList';
+    list.classList.add('radar-order-list');
+
+    radarCards.forEach((card, index) => {
+        const row = document.createElement('div');
+        row.classList.add('radar-order-card');
+        row.dataset.originalIndex = index.toString();
+
+        const img = document.createElement('img');
+        img.src = `https://${serverip}/images/${cardImageFolder(card.card_type)}/${card.id}.png`;
+        img.alt = card.name;
+        row.appendChild(img);
+
+        const label = document.createElement('span');
+        label.innerText = card.name;
+        row.appendChild(label);
+
+        const controls = document.createElement('div');
+        controls.classList.add('radar-order-controls');
+
+        const upButton = document.createElement('button');
+        upButton.type = 'button';
+        upButton.innerText = 'Up';
+        upButton.addEventListener('click', () => moveRadarCard(row, -1));
+        controls.appendChild(upButton);
+
+        const downButton = document.createElement('button');
+        downButton.type = 'button';
+        downButton.innerText = 'Down';
+        downButton.addEventListener('click', () => moveRadarCard(row, 1));
+        controls.appendChild(downButton);
+
+        row.appendChild(controls);
+        list.appendChild(row);
+    });
+
+    popupContent.appendChild(list);
+    updateRadarOrderButtons();
+
+    const playButton = document.getElementById('playCardBtn');
+    playButton.style.display = radarCards.length > 0 ? 'block' : 'none';
+}
+function moveRadarCard(row, direction) {
+    const sibling = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
+    if (!sibling) return;
+
+    if (direction < 0) {
+        row.parentElement.insertBefore(row, sibling);
+    } else {
+        row.parentElement.insertBefore(sibling, row);
+    }
+    updateRadarOrderButtons();
+}
+function updateRadarOrderButtons() {
+    const rows = Array.from(document.querySelectorAll('.radar-order-card'));
+    rows.forEach((row, index) => {
+        const buttons = row.querySelectorAll('button');
+        if (buttons[0]) buttons[0].disabled = index === 0;
+        if (buttons[1]) buttons[1].disabled = index === rows.length - 1;
+    });
+}
+function radarOrder() {
+    return Array.from(document.querySelectorAll('.radar-order-card'))
+        .map(row => Number.parseInt(row.dataset.originalIndex, 10));
 }
 function createQueuedCardDropdown(username) {
     const popupContent = document.getElementById('popupContent');
@@ -347,6 +422,7 @@ function sendPlayedCardToServer() {
     }
     const queuedCard = document.getElementById('queuedCardDropdown')?.value
     const firingFilterType = document.getElementById('firingFilterTypeDropdown')?.value
+    const radarOrderValues = radarOrder();
     var headers = {
         joincode: joincode,
         username: username,
@@ -357,6 +433,7 @@ function sendPlayedCardToServer() {
     if (discardOptions[1]) headers['discardcardtwo'] = discardOptions[1]
     if (queuedCard) headers['queuedcard'] = queuedCard
     if (firingFilterType) headers['firing_filter_type'] = firingFilterType
+    if (radarOrderValues.length > 0) headers['radar_order'] = JSON.stringify(radarOrderValues)
     sendPlayedCardHeaders(headers);
 }
 
