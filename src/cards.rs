@@ -189,7 +189,7 @@ pub fn all_cards() -> Vec<Card> {
             name: "Landmine".to_string(),
             id: "landmine".to_string(),
             card_type: CardType::Shooting(ShootingType::Boom),
-            can_be_played: can_play_boom_shooting,
+            can_be_played: can_play_landmine,
             play: play_landmine,
             count: 1,
         },
@@ -529,6 +529,10 @@ fn can_play_distractor_shooting(game_state: &GameState) -> bool {
     }
 
     return game_state.turn_state.shooting_card_played <= game_state.turn_state.more_ammo_played;
+}
+
+fn can_play_landmine(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool {
+    return can_play_shooting(game_state);
 }
 
 fn can_play_shooting(game_state: &GameState) -> bool {
