@@ -321,12 +321,14 @@ function addLobbyPlayer(player, className) {
     playerList.appendChild(messageElement);
 }
 function leaveLobby() {
+    const account = shooAccountDetails();
     username = document.getElementById('username-input').value;
     joincode = document.getElementById('joincode-input').value;
     const headers = {
         'Content-Type': 'application/json',
         'username': username,
-        'joincode': joincode
+        'joincode': joincode,
+        ...shooHeaders(account)
     };
     fetch(`https://${serverip}/leaveLobby`, {
         method: 'POST',
