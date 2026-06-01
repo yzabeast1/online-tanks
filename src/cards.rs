@@ -604,6 +604,11 @@ fn can_play_new_model(_card: &Card, game_state: &GameState, req: &Request<Body>)
         return false;
     }
 
+    let target_index = healing_target_index(game_state, game_state.current_turn_player, req);
+    if game_state.players[target_index].health >= game_state.game_settings.max_health {
+        return false;
+    }
+
     return can_play_event(_card, game_state, req);
 }
 

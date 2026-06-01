@@ -38,7 +38,7 @@ function validTargetsForCard(card) {
         const canRevive = gameData.game_settings?.revive_others_with_heal;
         return gameData.players.filter(player =>
             (player.health > 0 || canRevive)
-            && (card.id === 'new-model' || player.health < maxHealth)
+            && player.health < maxHealth
         );
     }
 
