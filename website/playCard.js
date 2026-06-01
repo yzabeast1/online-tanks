@@ -35,10 +35,18 @@ function isHealingCard(card) {
 function validTargetsForCard(card) {
     if (isHealingCard(card)) {
         const maxHealth = gameData.game_settings?.max_health ?? 10;
-        return gameData.players.filter(player => card.id === 'new-model' || player.health < maxHealth);
+        const canRevive = gameData.game_settings?.revive_others_with_heal;
+        return gameData.players.filter(player =>
+            (player.health > 0 || canRevive)
+            && (card.id === 'new-model' || player.health < maxHealth)
+        );
     }
 
-    return gameData.players.filter(player => player.name !== username && !firingFilterBlocksTarget(card, player.name));
+    return gameData.players.filter(player =>
+        player.health > 0
+        && player.name !== username
+        && !firingFilterBlocksTarget(card, player.name)
+    );
 }
 
 function hasValidTargetsForCard(card) {

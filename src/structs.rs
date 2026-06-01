@@ -306,11 +306,16 @@ impl GameState {
     }
 
     pub fn next_turn(&mut self) {
-        if self.players.is_empty() {
+        if self.players.is_empty() || self.alive_player_count() <= 1 {
             return;
         }
         self.turn_state = TurnState::new();
-        self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
+        loop {
+            self.current_turn_player = (self.current_turn_player + 1) % self.players.len();
+            if self.players[self.current_turn_player].health > 0 {
+                break;
+            }
+        }
         for calculated_shooting in self.active_cards.active_calculated_shootings.iter_mut() {
             if calculated_shooting.owner == self.players[self.current_turn_player].name {
                 calculated_shooting.turns_remaining =
@@ -358,6 +363,9 @@ impl GameState {
         if player_index >= self.players.len() {
             return;
         }
+        if self.players[player_index].health <= 0 {
+            return;
+        }
 
         self.players[player_index].health -= damage;
         let has_last_stand = self.players[player_index]
@@ -374,26 +382,43 @@ impl GameState {
             } else {
                 let player_name = self.players[player_index].name.clone();
                 self.push_server_chat_message(format!("{} died", player_name));
-                self.remove_player(player_index, true);
+                if self.game_settings.revive_others_with_heal {
+                    self.players[player_index].health = 0;
+                    self.discard_active_cards_for_player(&player_name);
+                    if self.active_cards.no_shooting_played_by == player_index as isize {
+                        self.active_cards.no_shooting_played_by = -1;
+                        if let Some(card) = self.active_cards.no_shooting_card.take() {
+                            self.discard_pile.push(card);
+                        }
+                    }
+                    if self.current_turn_player == player_index && self.alive_player_count() > 1 {
+                        self.next_turn();
+                    }
+                } else {
+                    self.remove_player(player_index, true);
+                }
             }
         }
     }
 
     pub fn heal_player(&mut self, player_index: usize, heal_ammount: isize) {
+        if player_index >= self.players.len() {
+            return;
+        }
         self.players[player_index].health += heal_ammount;
         if self.players[player_index].health > self.game_settings.max_health {
             self.players[player_index].health = self.game_settings.max_health;
         }
     }
 
-    pub fn remove_player(&mut self, player_index: usize, advance_turn_if_current: bool) -> bool {
-        if player_index >= self.players.len() {
-            return self.players.is_empty();
-        }
+    pub fn alive_player_count(&self) -> usize {
+        self.players
+            .iter()
+            .filter(|player| player.health > 0)
+            .count()
+    }
 
-        let player_name = self.players[player_index].name.clone();
-        let was_their_turn = self.current_turn_player == player_index;
-
+    fn discard_active_cards_for_player(&mut self, player_name: &str) {
         let mut active_firing_filters =
             std::mem::take(&mut self.active_cards.active_firing_filters);
         active_firing_filters.retain(|filter| {
@@ -417,6 +442,17 @@ impl GameState {
             }
         });
         self.active_cards.active_calculated_shootings = active_calculated_shootings;
+    }
+
+    pub fn remove_player(&mut self, player_index: usize, advance_turn_if_current: bool) -> bool {
+        if player_index >= self.players.len() {
+            return self.players.is_empty();
+        }
+
+        let player_name = self.players[player_index].name.clone();
+        let was_their_turn = self.current_turn_player == player_index;
+
+        self.discard_active_cards_for_player(&player_name);
 
         if self.active_cards.no_shooting_played_by == player_index as isize {
             self.active_cards.no_shooting_played_by = if self.players.len() > 1 {

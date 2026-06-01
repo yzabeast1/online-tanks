@@ -80,7 +80,9 @@ async function fetchGameState() {
 function renderGame() {
     if (JSON.stringify(renderedData) != JSON.stringify(gameData)) {
         const myPlayerIndex = gameData.players.findIndex(p => p.name === username);
-        const isDead = myPlayerIndex === -1;
+        const myPlayer = myPlayerIndex === -1 ? null : gameData.players[myPlayerIndex];
+        const isDead = !myPlayer || myPlayer.health <= 0;
+        const alivePlayers = gameData.players.filter(player => player.health > 0);
 
         if (isDead && !spectating) {
             document.getElementById('dead').style.display = 'block'
@@ -91,9 +93,11 @@ function renderGame() {
             const gameDiv = document.getElementById('game');
             gameDiv.innerHTML = '';  // Clear the game div
         } else {
-            if (gameData.players.length == 1) {
+            document.getElementById('dead').style.display = 'none'
+            document.getElementById('spectate-when-dead').style.display = 'none'
+            if (alivePlayers.length == 1) {
                 document.getElementById('win').style.display = "block"
-                document.getElementById('win').innerHTML = gameData.players[0].name + " Wins"
+                document.getElementById('win').innerHTML = alivePlayers[0].name + " Wins"
                 document.getElementById('turn').style.display = 'none'
                 document.getElementById('end-turn').style.display = 'none'
                 document.getElementById('no-shooting').style.display = 'none'
@@ -102,6 +106,7 @@ function renderGame() {
                 gameDiv.innerHTML = '';  // Clear the game div
             }
             else {
+                document.getElementById('win').style.display = "none"
                 document.getElementById('turn').innerHTML = gameData.players[gameData.current_turn_player].name + "'s Turn"
                 if (gameData.players[gameData.current_turn_player].name == username) {
                     document.getElementById('end-turn').style.display = 'block'
