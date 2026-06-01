@@ -260,7 +260,12 @@ document.addEventListener('keydown', (event) => {
     }
 });
 function startGame() {
-    const headers = { joincode: joincode };
+    const account = shooAccountDetails();
+    const headers = {
+        joincode: joincode,
+        username: username,
+        ...shooHeaders(account)
+    };
     if (typeof readLobbySettings === 'function') {
         headers.settings = JSON.stringify(readLobbySettings());
     }

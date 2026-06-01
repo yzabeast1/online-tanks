@@ -1404,14 +1404,36 @@ async fn handle_request(
         }
         (&Method::POST, "/startGame") => {
             let joincode = header_value(&req, "joincode");
-            match joincode {
-                Some(joincode) => {
+            let username = header_value(&req, "username");
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
+            match (joincode, username) {
+                (Some(joincode), Some(username)) => {
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get(&joincode) {
                         Some(lobby) if lobby.players.len() < 2 => Ok(text_response(
                             StatusCode::BAD_REQUEST,
                             "game requires at least 2 players",
                         )),
+                        Some(lobby) if lobby.players.first() != Some(&username) => {
+                            Ok(text_response(
+                                StatusCode::FORBIDDEN,
+                                "only the host can start the game",
+                            ))
+                        }
+                        Some(lobby)
+                            if !can_act_as_player(
+                                &lobby.shoo_identities,
+                                &username,
+                                shoo_user_id,
+                            ) =>
+                        {
+                            Ok(text_response(
+                                StatusCode::FORBIDDEN,
+                                "not authorized for host",
+                            ))
+                        }
                         Some(_) => {
                             let lobby = lobbies.remove(&joincode).unwrap();
                             let default_game_settings = "{\"starting_hand_size\":4,\"starting_health\":10,\"max_health\":10,\"play_heal_on_others\":false,\"revive_others_with_heal\":false}";
@@ -1437,7 +1459,8 @@ async fn handle_request(
                         None => Ok(text_response(StatusCode::NOT_FOUND, "game does not exist")),
                     }
                 }
-                None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
+                (None, _) => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
+                (_, None) => Ok(text_response(StatusCode::BAD_REQUEST, "missing username")),
             }
         }
         (&Method::GET, "/checkGameStarted") => {
