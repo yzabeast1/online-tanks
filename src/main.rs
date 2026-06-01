@@ -1435,12 +1435,19 @@ async fn handle_request(
                             ))
                         }
                         Some(_) => {
-                            let lobby = lobbies.remove(&joincode).unwrap();
                             let default_game_settings = "{\"starting_hand_size\":4,\"starting_health\":10,\"max_health\":10,\"play_heal_on_others\":false,\"revive_others_with_heal\":false}";
                             let settings_str = header_value(&req, "settings")
                                 .unwrap_or(default_game_settings.to_string());
-                            let settings: GameSettings =
-                                serde_json::from_str(&settings_str).unwrap();
+                            let settings: GameSettings = match serde_json::from_str(&settings_str) {
+                                Ok(settings) => settings,
+                                Err(_) => {
+                                    return Ok(text_response(
+                                        StatusCode::BAD_REQUEST,
+                                        "invalid settings",
+                                    ));
+                                }
+                            };
+                            let lobby = lobbies.remove(&joincode).unwrap();
                             let mut game_state = GameState::new(
                                 joincode.clone(),
                                 lobby.players.clone(),
