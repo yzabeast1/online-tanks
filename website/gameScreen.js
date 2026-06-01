@@ -46,6 +46,10 @@ function createPlayerPicture(playerData) {
     return defaultPicture;
 }
 
+function formatShootingType(shootingType) {
+    return `${shootingType || ''}`.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+}
+
 function spectateGame() {
     document.getElementById('spectate-when-dead').style.display = 'none'
     spectating = true
@@ -176,6 +180,19 @@ function renderGame() {
                                 activateButton.addEventListener('click', (event) => { activateCalculatedShootingPopup(event.target.id) })
                                 queuedCards.appendChild(activateButton)
                             }
+                        }
+                        playerDiv.appendChild(queuedCards)
+                    }
+
+                    let playerFiringFilters = gameData.active_cards.active_firing_filters.filter(f => f.owner === playerData.name);
+                    if (playerFiringFilters.length > 0) {
+                        const queuedCards = document.createElement('div')
+                        queuedCards.classList.add('queuedCards')
+                        for (var i = 0; i < playerFiringFilters.length; i++) {
+                            const firingFilterData = playerFiringFilters[i];
+                            var cardDisplay = document.createElement('p')
+                            cardDisplay.innerText = `${firingFilterData.card_played.name} is filtering ${formatShootingType(firingFilterData.filter_type)} shooting`
+                            queuedCards.appendChild(cardDisplay)
                         }
                         playerDiv.appendChild(queuedCards)
                     }
