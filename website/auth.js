@@ -104,16 +104,6 @@ function shooSettingsHeaders(account) {
     };
 }
 
-function logShooAccountDetails(action, account) {
-    console.log(`Shoo account details for ${action}:`, {
-        userId: account.userId,
-        email: account.email,
-        name: account.name,
-        picture: account.picture,
-        claims: account.claims,
-    });
-}
-
 function updateShooUi() {
     const accountEl = document.getElementById('shoo-account');
     if (!accountEl) {

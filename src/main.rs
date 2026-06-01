@@ -574,7 +574,11 @@ fn blocking_calculated_activation_filter(
         })
 }
 
-fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response<Body> {
+fn play_card_response(
+    req: &Request<Body>,
+    state: &Arc<ServerState>,
+    shoo_user_id: Option<&str>,
+) -> Response<Body> {
     let joincode = header_value(req, "joincode");
     let username = header_value(req, "username");
     let cardid = header_value(req, "cardid");
@@ -590,6 +594,10 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
     let Some(game) = games.get_mut(&joincode) else {
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
     };
+
+    if !can_act_as_player(&game.shoo_identities, &username, shoo_user_id) {
+        return text_response(StatusCode::FORBIDDEN, "not authorized for player");
+    }
 
     if game.players.is_empty() {
         return text_response(StatusCode::BAD_REQUEST, "game has no players");
@@ -719,6 +727,7 @@ fn play_card_response(req: &Request<Body>, state: &Arc<ServerState>) -> Response
 fn activate_calculated_shooting_response(
     req: &Request<Body>,
     state: &Arc<ServerState>,
+    shoo_user_id: Option<&str>,
 ) -> Response<Body> {
     let joincode = header_value(req, "joincode");
     let username = header_value(req, "username");
@@ -735,6 +744,10 @@ fn activate_calculated_shooting_response(
     let Some(game) = games.get_mut(&joincode) else {
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
     };
+
+    if !can_act_as_player(&game.shoo_identities, &username, shoo_user_id) {
+        return text_response(StatusCode::FORBIDDEN, "not authorized for player");
+    }
 
     let Some(active_index) = game
         .active_cards
@@ -888,6 +901,17 @@ fn can_view_player_private_data(
     }
 }
 
+fn can_act_as_player(
+    shoo_identities: &std::collections::HashMap<String, String>,
+    player_name: &str,
+    shoo_user_id: Option<&str>,
+) -> bool {
+    match shoo_identities.get(player_name) {
+        Some(expected_shoo_user_id) => Some(expected_shoo_user_id.as_str()) == shoo_user_id,
+        None => true,
+    }
+}
+
 fn game_state_response_for_player<'a>(
     game: &'a GameState,
     username: Option<&str>,
@@ -939,7 +963,8 @@ async fn verify_shoo_identity(
     req: &Request<Body>,
     settings: &ServerSettings,
 ) -> Result<Option<VerifiedShooIdentity>, String> {
-    let Some(token) = header_value(req, "shoo_token").filter(|token| !token.trim().is_empty()) else {
+    let Some(token) = header_value(req, "shoo_token").filter(|token| !token.trim().is_empty())
+    else {
         return Ok(None);
     };
 
@@ -1089,80 +1114,70 @@ async fn handle_request(
         }
         (&Method::GET, "/lobby.js") => serve_lobby_js(&server_settings).await,
         (&Method::GET, "/checkOnline") => Ok(text_response(StatusCode::OK, "Online")),
-        (&Method::GET, "/shooSettings") => {
-            match shoo_identity.as_ref() {
-                Some(shoo_identity) => {
-                    Ok(json_response(
-                        StatusCode::OK,
-                        serde_json::to_string(&shoo_settings_response(
-                            &state,
-                            &shoo_identity.user_id,
-                            shoo_identity.default_username.clone(),
-                            shoo_identity.default_picture.clone(),
-                        ))
-                        .unwrap(),
-                    ))
-                }
-                None => Ok(text_response(
-                    StatusCode::BAD_REQUEST,
-                    "missing shoo_token",
-                )),
-            }
-        }
-        (&Method::POST, "/shooSettings") => {
-            match shoo_identity.as_ref() {
-                Some(shoo_identity) => {
-                    let default_username = shoo_identity.default_username.clone();
-                    let default_picture = shoo_identity.default_picture.clone();
-                    let username = normalized_header_value(&req, "settings_username");
-                    let picture = normalized_header_value(&req, "settings_picture");
+        (&Method::GET, "/shooSettings") => match shoo_identity.as_ref() {
+            Some(shoo_identity) => Ok(json_response(
+                StatusCode::OK,
+                serde_json::to_string(&shoo_settings_response(
+                    &state,
+                    &shoo_identity.user_id,
+                    shoo_identity.default_username.clone(),
+                    shoo_identity.default_picture.clone(),
+                ))
+                .unwrap(),
+            )),
+            None => Ok(text_response(StatusCode::BAD_REQUEST, "missing shoo_token")),
+        },
+        (&Method::POST, "/shooSettings") => match shoo_identity.as_ref() {
+            Some(shoo_identity) => {
+                let default_username = shoo_identity.default_username.clone();
+                let default_picture = shoo_identity.default_picture.clone();
+                let username = normalized_header_value(&req, "settings_username");
+                let picture = normalized_header_value(&req, "settings_picture");
 
-                    let custom_username = if username.is_empty() || username == default_username {
-                        None
-                    } else {
-                        Some(username)
-                    };
-                    let custom_picture = if picture.is_empty() || picture == default_picture {
-                        None
-                    } else {
-                        Some(picture)
-                    };
+                let custom_username = if username.is_empty() || username == default_username {
+                    None
+                } else {
+                    Some(username)
+                };
+                let custom_picture = if picture.is_empty() || picture == default_picture {
+                    None
+                } else {
+                    Some(picture)
+                };
 
-                    {
-                        let mut settings = lock_or_recover(&state.shoo_settings, "shoo_settings");
-                        if custom_username.is_none() && custom_picture.is_none() {
-                            settings.remove(&shoo_identity.user_id);
-                        } else {
-                            settings.insert(
-                                shoo_identity.user_id.clone(),
-                                ShooUserSettings {
-                                    username: custom_username,
-                                    picture: custom_picture,
-                                },
-                            );
-                        }
+                {
+                    let mut settings = lock_or_recover(&state.shoo_settings, "shoo_settings");
+                    if custom_username.is_none() && custom_picture.is_none() {
+                        settings.remove(&shoo_identity.user_id);
+                    } else {
+                        settings.insert(
+                            shoo_identity.user_id.clone(),
+                            ShooUserSettings {
+                                username: custom_username,
+                                picture: custom_picture,
+                            },
+                        );
                     }
-
-                    Ok(json_response(
-                        StatusCode::OK,
-                        serde_json::to_string(&shoo_settings_response(
-                            &state,
-                            &shoo_identity.user_id,
-                            default_username,
-                            default_picture,
-                        ))
-                        .unwrap(),
-                    ))
                 }
-                None => Ok(text_response(
-                    StatusCode::BAD_REQUEST,
-                    "missing shoo_token",
-                )),
+
+                Ok(json_response(
+                    StatusCode::OK,
+                    serde_json::to_string(&shoo_settings_response(
+                        &state,
+                        &shoo_identity.user_id,
+                        default_username,
+                        default_picture,
+                    ))
+                    .unwrap(),
+                ))
             }
-        }
+            None => Ok(text_response(StatusCode::BAD_REQUEST, "missing shoo_token")),
+        },
         (&Method::POST, "/createGame") => {
             let username = header_value(&req, "username");
-            let shoo_user_id = shoo_identity.as_ref().map(|identity| identity.user_id.clone());
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.clone());
             let mut shoo_picture = shoo_identity
                 .as_ref()
                 .map(|identity| identity.default_picture.clone())
@@ -1198,7 +1213,9 @@ async fn handle_request(
         (&Method::POST, "/joinGame") => {
             let username = header_value(&req, "username");
             let joincode = header_value(&req, "joincode");
-            let shoo_user_id = shoo_identity.as_ref().map(|identity| identity.user_id.clone());
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.clone());
             let mut shoo_picture = shoo_identity
                 .as_ref()
                 .map(|identity| identity.default_picture.clone())
@@ -1241,80 +1258,75 @@ async fn handle_request(
                 )),
             }
         }
-        (&Method::GET, "/myGames") => {
-            match shoo_identity.as_ref() {
-                Some(shoo_identity) => {
-                    let shoo_user_id = &shoo_identity.user_id;
-                    let mut games_for_user = Vec::new();
+        (&Method::GET, "/myGames") => match shoo_identity.as_ref() {
+            Some(shoo_identity) => {
+                let shoo_user_id = &shoo_identity.user_id;
+                let mut games_for_user = Vec::new();
 
-                    {
-                        let lobbies = lock_or_recover(&state.lobbies, "lobbies");
-                        for (joincode, lobby) in lobbies.iter() {
-                            for (username, identity) in lobby.shoo_identities.iter() {
-                                if identity == shoo_user_id {
-                                    games_for_user.push(MyGameResponse {
-                                        joincode: joincode.clone(),
-                                        username: username.clone(),
-                                        status: "lobby".to_string(),
-                                        players: lobby
-                                            .players
-                                            .iter()
-                                            .map(|player| MyGamePlayerResponse {
-                                                name: player.clone(),
-                                                picture: lobby.shoo_pictures.get(player).cloned(),
-                                            })
-                                            .collect(),
-                                        current_turn_player: None,
-                                    });
-                                }
+                {
+                    let lobbies = lock_or_recover(&state.lobbies, "lobbies");
+                    for (joincode, lobby) in lobbies.iter() {
+                        for (username, identity) in lobby.shoo_identities.iter() {
+                            if identity == shoo_user_id {
+                                games_for_user.push(MyGameResponse {
+                                    joincode: joincode.clone(),
+                                    username: username.clone(),
+                                    status: "lobby".to_string(),
+                                    players: lobby
+                                        .players
+                                        .iter()
+                                        .map(|player| MyGamePlayerResponse {
+                                            name: player.clone(),
+                                            picture: lobby.shoo_pictures.get(player).cloned(),
+                                        })
+                                        .collect(),
+                                    current_turn_player: None,
+                                });
                             }
                         }
                     }
-
-                    {
-                        let games = lock_or_recover(&state.games, "games");
-                        for (joincode, game) in games.iter() {
-                            for (username, identity) in game.shoo_identities.iter() {
-                                if identity == shoo_user_id {
-                                    games_for_user.push(MyGameResponse {
-                                        joincode: joincode.clone(),
-                                        username: username.clone(),
-                                        status: "started".to_string(),
-                                        players: game
-                                            .players
-                                            .iter()
-                                            .map(|player| MyGamePlayerResponse {
-                                                name: player.name.clone(),
-                                                picture: game
-                                                    .shoo_pictures
-                                                    .get(&player.name)
-                                                    .cloned(),
-                                            })
-                                            .collect(),
-                                        current_turn_player: game
-                                            .players
-                                            .get(game.current_turn_player)
-                                            .map(|player| player.name.clone()),
-                                    });
-                                }
-                            }
-                        }
-                    }
-
-                    Ok(json_response(
-                        StatusCode::OK,
-                        serde_json::to_string(&games_for_user).unwrap(),
-                    ))
                 }
-                None => Ok(text_response(
-                    StatusCode::BAD_REQUEST,
-                    "missing shoo_token",
-                )),
+
+                {
+                    let games = lock_or_recover(&state.games, "games");
+                    for (joincode, game) in games.iter() {
+                        for (username, identity) in game.shoo_identities.iter() {
+                            if identity == shoo_user_id {
+                                games_for_user.push(MyGameResponse {
+                                    joincode: joincode.clone(),
+                                    username: username.clone(),
+                                    status: "started".to_string(),
+                                    players: game
+                                        .players
+                                        .iter()
+                                        .map(|player| MyGamePlayerResponse {
+                                            name: player.name.clone(),
+                                            picture: game.shoo_pictures.get(&player.name).cloned(),
+                                        })
+                                        .collect(),
+                                    current_turn_player: game
+                                        .players
+                                        .get(game.current_turn_player)
+                                        .map(|player| player.name.clone()),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                Ok(json_response(
+                    StatusCode::OK,
+                    serde_json::to_string(&games_for_user).unwrap(),
+                ))
             }
-        }
+            None => Ok(text_response(StatusCode::BAD_REQUEST, "missing shoo_token")),
+        },
         (&Method::POST, "/leaveLobby") => {
             let username = header_value(&req, "username");
             let joincode = header_value(&req, "joincode");
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
             match (username, joincode) {
                 (Some(username), Some(joincode)) => {
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
@@ -1323,6 +1335,16 @@ async fn handle_request(
                             if let Some(index) =
                                 lobby.players.iter().position(|player| player == &username)
                             {
+                                if !can_act_as_player(
+                                    &lobby.shoo_identities,
+                                    &username,
+                                    shoo_user_id,
+                                ) {
+                                    return Ok(text_response(
+                                        StatusCode::FORBIDDEN,
+                                        "not authorized for player",
+                                    ));
+                                }
                                 lobby.players.remove(index);
                                 lobby.shoo_identities.remove(&username);
                                 lobby.shoo_pictures.remove(&username);
@@ -1434,11 +1456,34 @@ async fn handle_request(
         }
         (&Method::POST, "/endTurn") => {
             let joincode: Option<String> = header_value(&req, "joincode");
+            let username: Option<String> = header_value(&req, "username");
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
             match joincode {
                 Some(joincode) => {
                     let mut games = lock_or_recover(&state.games, "games");
                     match games.get_mut(&joincode) {
                         Some(game) => {
+                            let Some(current_player) = game.players.get(game.current_turn_player)
+                            else {
+                                return Ok(text_response(
+                                    StatusCode::BAD_REQUEST,
+                                    "game has no current player",
+                                ));
+                            };
+                            if username.as_deref() != Some(current_player.name.as_str())
+                                || !can_act_as_player(
+                                    &game.shoo_identities,
+                                    &current_player.name,
+                                    shoo_user_id,
+                                )
+                            {
+                                return Ok(text_response(
+                                    StatusCode::FORBIDDEN,
+                                    "not authorized for player",
+                                ));
+                            }
                             game.next_turn();
                             let body = serde_json::to_string(&serde_json::json!({"current_turn_player": game.current_turn_player})).unwrap();
                             Ok(json_response(StatusCode::OK, body))
@@ -1455,7 +1500,9 @@ async fn handle_request(
         (&Method::GET, "/gameState") => {
             let joincode: Option<String> = header_value(&req, "joincode");
             let username: Option<String> = header_value(&req, "username");
-            let shoo_user_id = shoo_identity.as_ref().map(|identity| identity.user_id.as_str());
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
             match joincode {
                 Some(joincode) => {
                     let mut games = lock_or_recover(&state.games, "games");
@@ -1481,21 +1528,28 @@ async fn handle_request(
         (&Method::POST, "/sendChat") => {
             let joincode = header_value(&req, "joincode");
             let sender = header_value(&req, "username").unwrap_or_else(|| "Anonymous".to_string());
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
             let timestamp = current_timestamp();
             let message = header_value(&req, "text");
 
             match (joincode, message) {
                 (Some(joincode), Some(message)) => {
-                    let chat_message = ChatMessage {
-                        sender,
-                        message,
-                        timestamp,
-                    };
-
                     {
                         let mut games = lock_or_recover(&state.games, "games");
                         if let Some(game) = games.get_mut(&joincode) {
-                            game.chat_messages.push(chat_message);
+                            if !can_act_as_player(&game.shoo_identities, &sender, shoo_user_id) {
+                                return Ok(text_response(
+                                    StatusCode::FORBIDDEN,
+                                    "not authorized for player",
+                                ));
+                            }
+                            game.chat_messages.push(ChatMessage {
+                                sender,
+                                message,
+                                timestamp,
+                            });
                             return Ok(text_response(StatusCode::OK, "sent"));
                         }
                     }
@@ -1503,7 +1557,17 @@ async fn handle_request(
                     {
                         let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                         if let Some(lobby) = lobbies.get_mut(&joincode) {
-                            lobby.chat_messages.push(chat_message);
+                            if !can_act_as_player(&lobby.shoo_identities, &sender, shoo_user_id) {
+                                return Ok(text_response(
+                                    StatusCode::FORBIDDEN,
+                                    "not authorized for player",
+                                ));
+                            }
+                            lobby.chat_messages.push(ChatMessage {
+                                sender,
+                                message,
+                                timestamp,
+                            });
                             return Ok(text_response(StatusCode::OK, "sent"));
                         }
                     }
@@ -1553,6 +1617,9 @@ async fn handle_request(
         (&Method::POST, "/quitGame") => {
             let joincode = header_value(&req, "joincode");
             let username = header_value(&req, "username");
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
             match (joincode, username) {
                 (Some(joincode), Some(username)) => {
                     {
@@ -1560,6 +1627,16 @@ async fn handle_request(
                         if let Some(game) = games.get_mut(&joincode) {
                             match game.players.iter().position(|p| p.name == username) {
                                 Some(player_index) => {
+                                    if !can_act_as_player(
+                                        &game.shoo_identities,
+                                        &username,
+                                        shoo_user_id,
+                                    ) {
+                                        return Ok(text_response(
+                                            StatusCode::FORBIDDEN,
+                                            "not authorized for player",
+                                        ));
+                                    }
                                     game.push_server_chat_message(format!("{} quit", username));
                                     if game.remove_player(player_index, true) {
                                         games.remove(&joincode);
@@ -1584,6 +1661,16 @@ async fn handle_request(
                     match lobbies.get_mut(&joincode) {
                         Some(lobby) => match lobby.players.iter().position(|p| p == &username) {
                             Some(player_index) => {
+                                if !can_act_as_player(
+                                    &lobby.shoo_identities,
+                                    &username,
+                                    shoo_user_id,
+                                ) {
+                                    return Ok(text_response(
+                                        StatusCode::FORBIDDEN,
+                                        "not authorized for player",
+                                    ));
+                                }
                                 lobby.players.remove(player_index);
                                 if lobby.players.is_empty() {
                                     lobbies.remove(&joincode);
@@ -1610,10 +1697,20 @@ async fn handle_request(
             }
         }
         (&Method::POST, "/playCard") | (&Method::POST, "/playcard") => {
-            Ok(play_card_response(&req, &state))
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
+            Ok(play_card_response(&req, &state, shoo_user_id))
         }
         (&Method::POST, "/activateCalculatedShooting") => {
-            Ok(activate_calculated_shooting_response(&req, &state))
+            let shoo_user_id = shoo_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
+            Ok(activate_calculated_shooting_response(
+                &req,
+                &state,
+                shoo_user_id,
+            ))
         }
         (&Method::POST, "/activateDelayedCard") | (&Method::POST, "/useRadar") => {
             Ok(Response::builder()

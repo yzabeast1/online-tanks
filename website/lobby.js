@@ -153,7 +153,7 @@ function startSpectating() {
     document.querySelector('.container').style.display = 'flex'
     setStartGameVisible(false)
     updateLobbySettingsVisibility(false);
-    document.getElementById('lobby-show-code').innerHTML = "JoinCode: " + joincode
+    document.getElementById('lobby-show-code').innerText = "JoinCode: " + joincode
     lobbyPlayersInterval = setInterval(lobbyPlayers, playersInLobbyCooldown);
     lobbyStartedCheckInterval = setInterval(lobbyStartedCheck, lobbyStartedCheckCoooldown)
     lobbyPlayers();
@@ -195,8 +195,7 @@ async function joinLobby() {
     })
         .then(response => {
             if (!response.ok) throw new Error('HTTPS failed'); // Handle HTTP errors
-            if (account) logShooAccountDetails('joined game', account);
-            document.getElementById('lobby-show-code').innerHTML = "JoinCode: " + joincode
+            document.getElementById('lobby-show-code').innerText = "JoinCode: " + joincode
             loadMyShooGames();
         })
         .catch(error => {
@@ -241,10 +240,9 @@ async function newGame() {
             if (!response.ok) throw new Error('HTTPS failed'); // Handle HTTP errors
             joincode = response.headers.get('joincode')
             document.getElementById('joincode-input').value = joincode
-            document.getElementById('lobby-show-code').innerHTML = "JoinCode: " + document.getElementById('joincode-input').value
+            document.getElementById('lobby-show-code').innerText = "JoinCode: " + document.getElementById('joincode-input').value
             lobbyPlayersInterval = setInterval(lobbyPlayers, playersInLobbyCooldown);
             addLobbyPlayer(username, 'server-messsage')
-            if (account) logShooAccountDetails('created game', account);
             loadMyShooGames();
             lobbyPlayers();
             startChat();

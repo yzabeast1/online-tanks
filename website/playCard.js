@@ -347,8 +347,6 @@ function sendPlayedCardToServer() {
     }
     const queuedCard = document.getElementById('queuedCardDropdown')?.value
     const firingFilterType = document.getElementById('firingFilterTypeDropdown')?.value
-    console.log('Target:', selectedPlayer || 'No player selected');
-    console.log('Discard options:', discardOptions || 'No discard');
     var headers = {
         joincode: joincode,
         username: username,
@@ -369,7 +367,6 @@ function sendPlayedCardHeaders(extraHeaders) {
         cardid: cardSelected,
         ...extraHeaders
     }
-    console.log(headers)
     postWithFallback(`https://${serverip}/playcard`, headers)
     // You can now process the selected player and discard options here
     closePopup();  // Close the popup after playing the card
@@ -384,17 +381,13 @@ function findCardInPlayerHand(cardId, username) {
     }
 
     const playerHand = player.hand;
-    console.log(playerHand)
     // Loop through the player's hand and check if any card matches the given cardId
     for (let i = 0; i < playerHand.length; i++) {
         const card = playerHand[i];
-        console.log(card)
         if (card && card.id === cardId) {
-            console.log(`Card with ID ${cardId} found in ${username}'s hand at hand index ${i}.`);
             return i;
         }
     }
 
-    console.log(`Card with ID ${cardId} not found in ${username}'s hand.`);
     return null;
 }

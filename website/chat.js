@@ -96,7 +96,7 @@ function addLogToChatBox(message, classname){
     const messageElement = document.createElement('div');
     messageElement.className = classname;
     const strong=document.createElement('strong')
-    strong.innerHTML="Action: "+message
+    strong.innerText="Action: "+message
     messageElement.appendChild(strong)
     const chatBox = document.getElementById('chat-box');
     chatBox.appendChild(messageElement);

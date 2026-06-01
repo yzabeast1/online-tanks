@@ -97,7 +97,7 @@ function renderGame() {
             document.getElementById('spectate-when-dead').style.display = 'none'
             if (alivePlayers.length == 1) {
                 document.getElementById('win').style.display = "block"
-                document.getElementById('win').innerHTML = alivePlayers[0].name + " Wins"
+                document.getElementById('win').innerText = alivePlayers[0].name + " Wins"
                 document.getElementById('turn').style.display = 'none'
                 document.getElementById('end-turn').style.display = 'none'
                 document.getElementById('no-shooting').style.display = 'none'
@@ -107,7 +107,7 @@ function renderGame() {
             }
             else {
                 document.getElementById('win').style.display = "none"
-                document.getElementById('turn').innerHTML = gameData.players[gameData.current_turn_player].name + "'s Turn"
+                document.getElementById('turn').innerText = gameData.players[gameData.current_turn_player].name + "'s Turn"
                 if (gameData.players[gameData.current_turn_player].name == username) {
                     document.getElementById('end-turn').style.display = 'block'
                     document.getElementById('play-card').style.display = 'block'
@@ -118,7 +118,7 @@ function renderGame() {
                 }
                 if (gameData.active_cards.no_shooting_played_by !== -1) {
                     document.getElementById('no-shooting').style.display = 'block'
-                    document.getElementById('no-shooting').innerHTML = "No shooting was played by " + gameData.players[gameData.active_cards.no_shooting_played_by].name
+                    document.getElementById('no-shooting').innerText = "No shooting was played by " + gameData.players[gameData.active_cards.no_shooting_played_by].name
                 }
                 else document.getElementById('no-shooting').style.display = 'none'
                 if (gameData.active_cards.landmine_played_by !== -1) {
