@@ -901,8 +901,8 @@ fn play_big_bomb(_: &Card, game_state: &mut GameState, player_index: usize, req:
     let Some(target_index) = game_state.player_index_from_name(&target) else {
         return;
     };
-    game_state.damage_player(target_index, 6);
-    game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize * 5);
+    game_state.damage_player(target_index, 5);
+    game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize * 4);
 }
 fn play_small_bomb(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
     let Some(target) = header_value(req, "target") else {
