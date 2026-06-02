@@ -870,10 +870,11 @@ fn play_health_hazard(_: &Card, game_state: &mut GameState, _: usize, req: &Requ
     let Some(target) = header_value(req, "target") else {
         return;
     };
+    let max_health = game_state.game_settings.max_health;
     let Some(target_player) = game_state.player_by_name_mut(&target) else {
         return;
     };
-    target_player.health = thread_rng().gen_range(1..=10);
+    target_player.health = thread_rng().gen_range(1..=max_health);
 }
 fn play_spray(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
     for i in 1..game_state.players.len() {

@@ -42,6 +42,11 @@ function validTargetsForCard(card) {
         );
     }
 
+    // Health Hazard may be played against yourself — include all alive players
+    if (card && card.id === 'health-hazard') {
+        return gameData.players.filter(player => player.health > 0);
+    }
+
     return gameData.players.filter(player =>
         player.health > 0
         && player.name !== username
