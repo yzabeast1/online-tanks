@@ -1,60 +1,69 @@
 var shooAccount = null;
 var shooSettings = null;
 
-function shooIdentity() {
-    if (!window.Shoo || !window.Shoo.getIdentity) {
+function clerkUser() {
+    if (!window.Clerk || !window.Clerk.user || !window.Clerk.user.id) {
         return null;
     }
 
-    const identity = window.Shoo.getIdentity();
-    if (!identity || !identity.userId) {
-        return null;
-    }
-
-    return identity;
+    return window.Clerk.user;
 }
 
-function decodeJwtPayload(token) {
-    if (!token || token.split('.').length < 2) {
-        return {};
+function shooDefaultUsername(account) {
+    return account && (account.username || account.name || account.email || account.userId) || '';
+}
+
+function shooDefaultPicture(account) {
+    return account && account.picture || '';
+}
+
+async function hydrateShooAccount() {
+    const user = clerkUser();
+    if (!user) {
+        shooAccount = null;
+        return null;
     }
 
-    try {
-        let payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-        payload = payload.padEnd(payload.length + (4 - payload.length % 4) % 4, '=');
-        return JSON.parse(atob(payload));
-    } catch (error) {
-        console.warn('Could not decode Shoo token payload:', error);
-        return {};
+    let token = null;
+    if (window.Clerk.session && window.Clerk.session.getToken) {
+        try {
+            token = await window.Clerk.session.getToken();
+        } catch (error) {
+            console.warn('Could not fetch Clerk session token:', error);
+        }
     }
+
+    shooAccount = {
+        userId: user.id,
+        token,
+        username: user.username || null,
+        name: user.fullName || null,
+        email: user.primaryEmailAddress ? user.primaryEmailAddress.emailAddress : null,
+        picture: user.imageUrl || null,
+        claims: {
+            username: user.username || null,
+            fullName: user.fullName || null,
+            imageUrl: user.imageUrl || null,
+        },
+    };
+
+    return shooAccount;
 }
 
 function shooAccountDetails() {
-    const identity = shooIdentity();
-    if (!identity) {
-        return null;
-    }
-
-    const claims = decodeJwtPayload(identity.token);
-    return {
-        userId: identity.userId,
-        token: identity.token,
-        email: claims.email || null,
-        name: claims.name || null,
-        picture: claims.picture || null,
-        claims,
-    };
+    return shooAccount;
 }
 
 async function requireShooAccount() {
-    const account = shooAccountDetails();
+    const account = shooAccountDetails() || await hydrateShooAccount();
     if (account) {
-        shooAccount = account;
         updateShooUi();
         return account;
     }
 
-    window.Shoo.startSignIn({ requestPii: true, returnTo: window.location.pathname });
+    if (window.Clerk && window.Clerk.redirectToSignIn) {
+        await window.Clerk.redirectToSignIn({ signInForceRedirectUrl: window.location.pathname });
+    }
     return null;
 }
 
@@ -66,14 +75,6 @@ function applyShooDefaults(account) {
     if (usernameInput && defaultUsername && (!usernameInput.value.trim() || usernameInput.value.trim() === shooUsername)) {
         usernameInput.value = defaultUsername;
     }
-}
-
-function shooDefaultUsername(account) {
-    return account && (account.name || account.email || account.userId) || '';
-}
-
-function shooDefaultPicture(account) {
-    return account && account.picture || '';
 }
 
 function shooEffectiveUsername(account) {
@@ -93,8 +94,14 @@ function shooHeaders(account) {
         return {};
     }
 
+    const defaultUsername = shooDefaultUsername(account);
+    const defaultPicture = shooDefaultPicture(account);
+
     return {
         shoo_token: account.token,
+        shoo_user_id: account.userId,
+        ...(defaultUsername ? { shoo_default_username: defaultUsername } : {}),
+        ...(defaultPicture ? { shoo_default_picture: defaultPicture } : {}),
     };
 }
 
@@ -115,7 +122,9 @@ function updateShooUi() {
         accountEl.innerHTML = '<button id="shoo-sign-in" type="button">Sign in with Shoo</button>';
         renderSettingsMenu(null);
         document.getElementById('shoo-sign-in').addEventListener('click', () => {
-            window.Shoo.startSignIn({ requestPii: true, returnTo: window.location.pathname });
+            if (window.Clerk && window.Clerk.redirectToSignIn) {
+                window.Clerk.redirectToSignIn({ signInForceRedirectUrl: window.location.pathname });
+            }
         });
         return;
     }
@@ -171,8 +180,10 @@ function updateShooUi() {
 }
 
 function clearShooSession() {
-    if (window.Shoo && window.Shoo.clearIdentity) {
-        window.Shoo.clearIdentity();
+    if (window.Clerk && window.Clerk.signOut) {
+        window.Clerk.signOut({ redirectUrl: window.location.pathname }).catch(error => {
+            console.warn('Could not sign out of Clerk:', error);
+        });
     }
     shooAccount = null;
     shooSettings = null;
@@ -187,11 +198,13 @@ function signOutShoo() {
 
 function switchShooAccount() {
     clearShooSession();
-    window.Shoo.startSignIn({ requestPii: true, returnTo: window.location.pathname });
+    if (window.Clerk && window.Clerk.redirectToSignIn) {
+        window.Clerk.redirectToSignIn({ signInForceRedirectUrl: window.location.pathname });
+    }
 }
 
 async function loadMyShooGames() {
-    const account = shooAccountDetails();
+    const account = shooAccountDetails() || await hydrateShooAccount();
     const gamesEl = document.getElementById('my-games');
     if (!account || !gamesEl) {
         return;
@@ -213,7 +226,7 @@ async function loadMyShooGames() {
 }
 
 async function loadShooSettings() {
-    const account = shooAccountDetails();
+    const account = shooAccountDetails() || await hydrateShooAccount();
     if (!account) {
         shooSettings = null;
         renderSettingsMenu(null);
@@ -252,7 +265,7 @@ async function saveShooSettings(event) {
         event.preventDefault();
     }
 
-    const account = shooAccountDetails();
+    const account = shooAccountDetails() || await hydrateShooAccount();
     if (!account) {
         return;
     }
@@ -444,7 +457,7 @@ function renderMyShooGames(games) {
 
 async function removeShooGame(game) {
     try {
-        const account = shooAccountDetails();
+        const account = shooAccountDetails() || await hydrateShooAccount();
         const response = await fetch(`https://${serverip}/quitGame`, {
             method: 'POST',
             headers: {
@@ -482,13 +495,33 @@ function rejoinShooGame(game) {
     }
 }
 
-window.addEventListener('load', () => {
+async function initializeClerkAccount() {
+    await hydrateShooAccount();
+
+    if (window.Clerk && window.Clerk.addListener) {
+        window.Clerk.addListener(async () => {
+            const account = await hydrateShooAccount();
+            if (account) {
+                applyShooDefaults(account);
+                await loadShooSettings();
+                await loadMyShooGames();
+            } else {
+                renderSettingsMenu(null);
+                renderMyShooGames([]);
+            }
+            updateShooUi();
+        }, { skipInitialEmit: true });
+    }
+
     const account = shooAccountDetails();
     if (account) {
-        shooAccount = account;
         applyShooDefaults(account);
     }
     updateShooUi();
     loadShooSettings();
     loadMyShooGames();
+}
+
+window.addEventListener('load', () => {
+    initializeClerkAccount();
 });

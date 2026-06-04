@@ -12,7 +12,7 @@ use std::{
 
 use hyper::service::service_fn;
 use hyper::{Body, Method, Request, Response, StatusCode};
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation, jwk::JwkSet};
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use serde::{Deserialize, Serialize};
@@ -20,11 +20,11 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 
 use crate::cards::all_cards;
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
 const WEBSITE_DIR: &str = "./website";
 const IMAGES_DIR: &str = "./images";
-const SHOO_BASE_URL: &str = "https://shoo.dev";
-const SHOO_ISSUER: &str = "https://shoo.dev";
+
 
 async fn serve_file(path: &str, content_type: &str) -> Result<Response<Body>, Infallible> {
     match tokio::fs::read(path).await {
@@ -1034,13 +1034,20 @@ struct VerifiedShooIdentity {
 
 #[derive(Debug, Deserialize)]
 struct ShooTokenClaims {
-    pairwise_sub: String,
+    sub: String,
+    azp: String,
+    iss: String,
     #[serde(default)]
     email: Option<String>,
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
     picture: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UnverifiedShooTokenClaims {
+    iss: String,
 }
 
 #[derive(Serialize)]
@@ -1153,7 +1160,69 @@ fn normalized_header_value(req: &Request<Body>, name: &str) -> String {
 }
 
 fn shoo_audience(settings: &ServerSettings) -> String {
-    format!("origin:{}", server_connect_url(settings))
+    server_connect_url(settings)
+}
+
+fn shoo_expected_azp(settings: &ServerSettings) -> String {
+    shoo_audience(settings)
+}
+
+fn decode_unverified_shoo_claims(token: &str) -> Result<UnverifiedShooTokenClaims, String> {
+    let payload = token
+        .split('.')
+        .nth(1)
+        .ok_or_else(|| "invalid shoo token: missing payload".to_string())?;
+    let decoded = URL_SAFE_NO_PAD
+        .decode(payload)
+        .map_err(|err| format!("invalid shoo token payload: {}", err))?;
+
+    serde_json::from_slice(&decoded)
+        .map_err(|err| format!("invalid shoo token payload: {}", err))
+}
+
+fn shoo_issuer_from_claims(issuer: &str) -> Result<String, String> {
+    let issuer = issuer.trim();
+    if issuer.is_empty() {
+        return Err("shoo token missing issuer".to_string());
+    }
+
+    if !issuer.starts_with("https://") {
+        return Err("shoo token has invalid issuer".to_string());
+    }
+
+    let issuer_host = issuer.trim_start_matches("https://");
+    if !issuer_host.ends_with(".clerk.accounts.dev") {
+        return Err("shoo token has unsupported issuer".to_string());
+    }
+
+    Ok(issuer.to_string())
+}
+
+fn shoo_default_username_from_request(req: &Request<Body>, claims: &ShooTokenClaims) -> String {
+    let header_username = normalized_header_value(req, "shoo_default_username");
+    if !header_username.is_empty() {
+        return header_username;
+    }
+
+    claims
+        .name
+        .clone()
+        .or(claims.email.clone())
+        .unwrap_or_default()
+}
+
+fn shoo_default_picture_from_request(req: &Request<Body>, claims: &ShooTokenClaims) -> String {
+    let header_picture = normalized_header_value(req, "shoo_default_picture");
+    if !header_picture.is_empty() {
+        return header_picture;
+    }
+
+    let fallback_picture = normalized_header_value(req, "shoo_picture");
+    if !fallback_picture.is_empty() {
+        return fallback_picture;
+    }
+
+    claims.picture.clone().unwrap_or_default()
 }
 
 async fn verify_shoo_identity(
@@ -1166,7 +1235,7 @@ async fn verify_shoo_identity(
     };
 
     let header = decode_header(&token).map_err(|err| format!("invalid shoo token: {}", err))?;
-    if header.alg != Algorithm::ES256 {
+    if header.alg != Algorithm::RS256 {
         return Err("invalid shoo token algorithm".to_string());
     }
 
@@ -1174,7 +1243,9 @@ async fn verify_shoo_identity(
         return Err("shoo token missing key id".to_string());
     };
 
-    let jwks: JwkSet = reqwest::get(format!("{}/.well-known/jwks.json", SHOO_BASE_URL))
+    let claims_unverified = decode_unverified_shoo_claims(&token)?;
+    let issuer = shoo_issuer_from_claims(&claims_unverified.iss)?;
+    let jwks: JwkSet = reqwest::get(format!("{}/.well-known/jwks.json", issuer))
         .await
         .map_err(|err| format!("failed to fetch Shoo keys: {}", err))?
         .error_for_status()
@@ -1189,24 +1260,31 @@ async fn verify_shoo_identity(
     let decoding_key =
         DecodingKey::from_jwk(jwk).map_err(|err| format!("invalid Shoo key: {}", err))?;
 
-    let mut validation = Validation::new(Algorithm::ES256);
-    validation.set_issuer(&[SHOO_ISSUER]);
-    validation.set_audience(&[shoo_audience(settings)]);
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.validate_aud = false;
+    validation.validate_nbf = true;
+    validation.set_required_spec_claims(&["exp", "iss", "nbf", "sub"]);
 
     let token = decode::<ShooTokenClaims>(&token, &decoding_key, &validation)
         .map_err(|err| format!("invalid shoo token: {}", err))?;
     let claims = token.claims;
-    if claims.pairwise_sub.trim().is_empty() {
-        return Err("shoo token missing pairwise_sub".to_string());
+    if claims.sub.trim().is_empty() {
+        return Err("shoo token missing sub".to_string());
+    }
+    if claims.azp.trim() != shoo_expected_azp(settings) {
+        return Err("shoo token azp does not match server connect url".to_string());
+    }
+    if claims.iss.trim() != issuer {
+        return Err("shoo token issuer does not match fetched issuer".to_string());
     }
 
+    let default_username = shoo_default_username_from_request(req, &claims);
+    let default_picture = shoo_default_picture_from_request(req, &claims);
+
     Ok(Some(VerifiedShooIdentity {
-        user_id: claims.pairwise_sub,
-        default_username: claims
-            .name
-            .or(claims.email)
-            .unwrap_or_else(|| "".to_string()),
-        default_picture: claims.picture.unwrap_or_default(),
+        user_id: claims.sub,
+        default_username,
+        default_picture,
     }))
 }
 

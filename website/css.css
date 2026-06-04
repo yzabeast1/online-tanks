@@ -1105,3 +1105,7 @@ img {
         font-size: 22px;
     }
 }
+
+[class~="cl-button"] {
+    background: unset;
+}
