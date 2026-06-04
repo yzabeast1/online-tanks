@@ -155,6 +155,26 @@ select option {
     overflow-wrap: anywhere;
 }
 
+/* Custom sign-in button to match username/joincode inputs */
+.custom-signin .google-btn {
+    width: 100%;
+    min-height: 42px;
+    border-radius: 6px;
+    padding: 10px 12px;
+    text-align: center;
+    font-weight: 700;
+    color: var(--text);
+    background: rgba(244, 239, 224, 0.08);
+    border-color: var(--line);
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.custom-signin .google-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(214, 168, 79, 0.12);
+}
+
 #shoo-account button,
 .my-game-button {
     width: 100%;

@@ -47,7 +47,31 @@
 
                         const signInDiv = document.getElementById('sign-in')
 
-                        Clerk.mountSignIn(signInDiv)
+                        // Render a custom sign-in area with only a Google button.
+                        signInDiv.innerHTML = `
+                            <div class="custom-signin">
+                                <button id="google-signin" class="google-btn">Continue with Google</button>
+                            </div>
+                        `;
+
+                        const googleBtn = document.getElementById('google-signin');
+                        googleBtn.addEventListener('click', async () => {
+                            // Prefer Clerk SDK redirect if available; fall back to hosted sign-in URL.
+                            try {
+                                if (window.Clerk && window.Clerk.redirectToSignIn) {
+                                    await Clerk.redirectToSignIn({ strategy: 'oauth_google', signInForceRedirectUrl: window.location.pathname });
+                                    return;
+                                }
+                            } catch (err) {
+                                console.warn('Clerk redirectToSignIn failed:', err);
+                            }
+
+                            // Fallback hosted sign-in URL (uses same Clerk host as the scripts)
+                            const clerkHost = 'https://joint-wahoo-1.clerk.accounts.dev';
+                            const redirect = encodeURIComponent(window.location.pathname || '/');
+                            const url = `${clerkHost}/sign-in?provider=oauth_google&redirect_url=${redirect}`;
+                            window.location.href = url;
+                        });
                     }
                 })
             </script>
