@@ -1159,14 +1159,6 @@ fn normalized_header_value(req: &Request<Body>, name: &str) -> String {
         .unwrap_or_default()
 }
 
-fn shoo_audience(settings: &ServerSettings) -> String {
-    server_connect_url(settings)
-}
-
-fn shoo_expected_azp(settings: &ServerSettings) -> String {
-    shoo_audience(settings)
-}
-
 fn decode_unverified_shoo_claims(token: &str) -> Result<UnverifiedShooTokenClaims, String> {
     let payload = token
         .split('.')
@@ -1271,7 +1263,7 @@ async fn verify_shoo_identity(
     if claims.sub.trim().is_empty() {
         return Err("shoo token missing sub".to_string());
     }
-    if claims.azp.trim() != shoo_expected_azp(settings) {
+    if claims.azp.trim() != server_connect_url(settings) {
         return Err("shoo token azp does not match server connect url".to_string());
     }
     if claims.iss.trim() != issuer {

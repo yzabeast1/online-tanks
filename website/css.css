@@ -123,6 +123,30 @@ select option {
     border-radius: 8px;
     background: rgba(32, 37, 29, 0.86);
     box-shadow: var(--shadow);
+    justify-items: center;
+}
+
+.login-container > input[type="text"],
+.login-container > #app {
+    width: min(100%, 360px);
+}
+
+.login-container > input[type="text"] {
+    text-align: center;
+}
+
+.login-container > #app {
+    display: flex;
+    justify-content: center;
+}
+
+.login-container > #app > #sign-in {
+    width: 100%;
+}
+
+.login-container #sign-in .cl-cardBox {
+    width: 100%;
+    max-width: 100%;
 }
 
 .login-container #shoo-account {
