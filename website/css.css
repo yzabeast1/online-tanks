@@ -364,6 +364,8 @@ select option {
 #my-games {
     display: grid;
     gap: 8px;
+    width: 100%;
+    justify-self: stretch;
 }
 
 .lobby-settings-menu {
