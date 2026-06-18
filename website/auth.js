@@ -12,7 +12,17 @@ function clerkDefaultUsername(account) {
     return account && (account.username || account.name || account.email || account.userId) || '';
 }
 
+async function waitForClerk() {
+    if (window.clerkLoadPromise) {
+        await window.clerkLoadPromise;
+    } else if (window.Clerk && window.Clerk.load && !window.Clerk.loaded) {
+        await window.Clerk.load();
+    }
+}
+
 async function hydrateClerkAccount() {
+    await waitForClerk();
+
     const user = clerkUser();
     if (!user) {
         clerkAccount = null;
@@ -51,7 +61,7 @@ function clerkAccountDetails() {
 
 async function requireClerkAccount() {
     const account = clerkAccountDetails() || await hydrateClerkAccount();
-    if (account) {
+    if (account && account.token) {
         return account;
     }
 
@@ -76,7 +86,7 @@ function clerkEffectiveUsername(account) {
 }
 
 function clerkHeaders(account) {
-    if (!account) {
+    if (!account || !account.token || !account.userId) {
         return {};
     }
 
@@ -95,7 +105,10 @@ function clerkHeaders(account) {
 async function loadMyClerkGames() {
     const account = clerkAccountDetails() || await hydrateClerkAccount();
     const gamesEl = document.getElementById('my-games');
-    if (!account || !gamesEl) {
+    if (!account || !account.token || !gamesEl) {
+        if (gamesEl) {
+            renderMyClerkGames([]);
+        }
         return;
     }
 
@@ -209,6 +222,10 @@ function renderMyClerkGames(games) {
 async function removeClerkGame(game) {
     try {
         const account = clerkAccountDetails() || await hydrateClerkAccount();
+        if (!account || !account.token) {
+            throw new Error('Sign in is required to remove saved Clerk games');
+        }
+
         const response = await fetch(`https://${serverip}/quitGame`, {
             method: 'POST',
             headers: {

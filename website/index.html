@@ -27,10 +27,25 @@
                 type="text/javascript">
                 </script>
             <script>
-                window.addEventListener('load', async function () {
-                    await Clerk.load({
-                        ui: { ClerkUI: window.__internal_ClerkUICtor },
-                    })
+                window.clerkLoadPromise = new Promise(resolve => {
+                    window.addEventListener('load', async function () {
+                        if (!window.Clerk) {
+                            resolve(null);
+                            return;
+                        }
+
+                        await Clerk.load({
+                            ui: { ClerkUI: window.__internal_ClerkUICtor },
+                        })
+
+                        resolve(Clerk);
+                    });
+                });
+
+                window.clerkLoadPromise.then(function (loadedClerk) {
+                    if (!loadedClerk) {
+                        return;
+                    }
 
                     if (Clerk.isSignedIn) {
                         document.getElementById('app').innerHTML = `
