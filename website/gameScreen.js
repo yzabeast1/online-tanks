@@ -70,7 +70,7 @@ async function fetchGameState() {
         const headers = {
             joincode: joincode,
             username: username,
-            ...shooHeaders(shooAccountDetails()),
+            ...clerkHeaders(clerkAccountDetails()),
         };
         const response = await fetch(`https://${serverip}/gameState`, { headers });
         gameData = await response.json();
@@ -278,11 +278,11 @@ document.addEventListener('keydown', (event) => {
     }
 });
 function startGame() {
-    const account = shooAccountDetails();
+    const account = clerkAccountDetails();
     const headers = {
         joincode: joincode,
         username: username,
-        ...shooHeaders(account)
+        ...clerkHeaders(account)
     };
     if (typeof readLobbySettings === 'function') {
         headers.settings = JSON.stringify(readLobbySettings());
@@ -307,7 +307,7 @@ function endTurn() {
     postWithFallbackNoJSON(`https://${serverip}/endTurn`, {
         joincode: joincode,
         username: username,
-        ...shooHeaders(shooAccountDetails()),
+        ...clerkHeaders(clerkAccountDetails()),
     })
 }
 
@@ -499,7 +499,7 @@ function activateCalculatedShooting() {
         joincode: joincode,
         username: username,
         cardid: cardid,
-        ...shooHeaders(shooAccountDetails()),
+        ...clerkHeaders(clerkAccountDetails()),
     }
     if (selectedPlayer) headers.target = selectedPlayer
     if (decisionMissileAction) headers.decision_action = decisionMissileAction

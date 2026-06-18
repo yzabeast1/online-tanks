@@ -10,6 +10,12 @@ pub struct ServerSettings {
     pub bind_ip: String,
     pub port: u16,
     pub connect_link: String,
+    #[serde(default = "default_clerk_issuer_url")]
+    pub clerk_issuer_url: String,
+}
+
+pub fn default_clerk_issuer_url() -> String {
+    "https://joint-wahoo-1.clerk.accounts.dev".to_string()
 }
 
 impl Default for ServerSettings {
@@ -18,6 +24,7 @@ impl Default for ServerSettings {
             bind_ip: "0.0.0.0".to_string(),
             port: 443,
             connect_link: "localhost".to_string(),
+            clerk_issuer_url: default_clerk_issuer_url(),
         }
     }
 }
@@ -184,9 +191,9 @@ pub struct GameState {
     pub players: Vec<Player>,
     pub id: String,
     #[serde(default)]
-    pub shoo_identities: HashMap<String, String>,
+    pub clerk_identities: HashMap<String, String>,
     #[serde(default)]
-    pub shoo_pictures: HashMap<String, String>,
+    pub clerk_pictures: HashMap<String, String>,
     pub current_turn_player: usize,
     pub draw_pile: Vec<Card>,
     pub discard_pile: Vec<Card>,
@@ -209,27 +216,27 @@ pub struct ChatMessage {
 pub struct LobbyState {
     pub players: Vec<String>,
     #[serde(default)]
-    pub shoo_identities: HashMap<String, String>,
+    pub clerk_identities: HashMap<String, String>,
     #[serde(default)]
-    pub shoo_pictures: HashMap<String, String>,
+    pub clerk_pictures: HashMap<String, String>,
     pub chat_messages: Vec<ChatMessage>,
 }
 
 impl LobbyState {
-    pub fn new(host: String, shoo_user_id: Option<String>, shoo_picture: String) -> Self {
-        let mut shoo_identities = HashMap::new();
-        if let Some(shoo_user_id) = shoo_user_id {
-            shoo_identities.insert(host.clone(), shoo_user_id);
+    pub fn new(host: String, clerk_user_id: Option<String>, clerk_picture: String) -> Self {
+        let mut clerk_identities = HashMap::new();
+        if let Some(clerk_user_id) = clerk_user_id {
+            clerk_identities.insert(host.clone(), clerk_user_id);
         }
-        let mut shoo_pictures = HashMap::new();
-        if !shoo_picture.is_empty() && shoo_identities.contains_key(&host) {
-            shoo_pictures.insert(host.clone(), shoo_picture);
+        let mut clerk_pictures = HashMap::new();
+        if !clerk_picture.is_empty() && clerk_identities.contains_key(&host) {
+            clerk_pictures.insert(host.clone(), clerk_picture);
         }
 
         Self {
             players: vec![host],
-            shoo_identities,
-            shoo_pictures,
+            clerk_identities,
+            clerk_pictures,
             chat_messages: Vec::new(),
         }
     }
@@ -240,16 +247,6 @@ pub struct ServerState {
     pub lobbies: Mutex<HashMap<String, LobbyState>>,
     pub started_games: Mutex<HashSet<String>>,
     pub games: Mutex<HashMap<String, GameState>>,
-    #[serde(default)]
-    pub shoo_settings: Mutex<HashMap<String, ShooUserSettings>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ShooUserSettings {
-    #[serde(default)]
-    pub username: Option<String>,
-    #[serde(default)]
-    pub picture: Option<String>,
 }
 
 impl ServerState {
@@ -258,7 +255,6 @@ impl ServerState {
             lobbies: Mutex::new(HashMap::new()),
             started_games: Mutex::new(HashSet::new()),
             games: Mutex::new(HashMap::new()),
-            shoo_settings: Mutex::new(HashMap::new()),
         }
     }
 
@@ -275,8 +271,8 @@ impl GameState {
     pub fn new(
         game_id: String,
         player_names: Vec<String>,
-        shoo_identities: HashMap<String, String>,
-        shoo_pictures: HashMap<String, String>,
+        clerk_identities: HashMap<String, String>,
+        clerk_pictures: HashMap<String, String>,
         game_settings: GameSettings,
     ) -> Self {
         let mut players = Vec::new();
@@ -287,8 +283,8 @@ impl GameState {
         return GameState {
             players,
             id: game_id,
-            shoo_identities,
-            shoo_pictures,
+            clerk_identities,
+            clerk_pictures,
             current_turn_player: 0,
             draw_pile: Vec::new(),
             discard_pile: Vec::new(),

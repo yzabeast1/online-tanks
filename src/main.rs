@@ -12,7 +12,7 @@ use std::{
 
 use hyper::service::service_fn;
 use hyper::{Body, Method, Request, Response, StatusCode};
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation, jwk::JwkSet};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use serde::{Deserialize, Serialize};
@@ -20,11 +20,9 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 
 use crate::cards::all_cards;
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
 const WEBSITE_DIR: &str = "./website";
 const IMAGES_DIR: &str = "./images";
-
 
 async fn serve_file(path: &str, content_type: &str) -> Result<Response<Body>, Infallible> {
     match tokio::fs::read(path).await {
@@ -577,7 +575,7 @@ fn blocking_calculated_activation_filter(
 fn play_card_response(
     req: &Request<Body>,
     state: &Arc<ServerState>,
-    shoo_user_id: Option<&str>,
+    clerk_user_id: Option<&str>,
 ) -> Response<Body> {
     let joincode = header_value(req, "joincode");
     let username = header_value(req, "username");
@@ -595,7 +593,7 @@ fn play_card_response(
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
     };
 
-    if !can_act_as_player(&game.shoo_identities, &username, shoo_user_id) {
+    if !can_act_as_player(&game.clerk_identities, &username, clerk_user_id) {
         return text_response(StatusCode::FORBIDDEN, "not authorized for player");
     }
 
@@ -746,7 +744,7 @@ fn selected_response_hand_index(value: &str, hand: &[Card]) -> Option<usize> {
 fn choose_recycle_discard_response(
     req: &Request<Body>,
     state: &Arc<ServerState>,
-    shoo_user_id: Option<&str>,
+    clerk_user_id: Option<&str>,
 ) -> Response<Body> {
     let joincode = header_value(req, "joincode");
     let username = header_value(req, "username");
@@ -765,7 +763,7 @@ fn choose_recycle_discard_response(
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
     };
 
-    if !can_act_as_player(&game.shoo_identities, &username, shoo_user_id) {
+    if !can_act_as_player(&game.clerk_identities, &username, clerk_user_id) {
         return text_response(StatusCode::FORBIDDEN, "not authorized for player");
     }
 
@@ -813,7 +811,7 @@ fn choose_recycle_discard_response(
 fn choose_recycle_card_response(
     req: &Request<Body>,
     state: &Arc<ServerState>,
-    shoo_user_id: Option<&str>,
+    clerk_user_id: Option<&str>,
 ) -> Response<Body> {
     let joincode = header_value(req, "joincode");
     let username = header_value(req, "username");
@@ -832,7 +830,7 @@ fn choose_recycle_card_response(
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
     };
 
-    if !can_act_as_player(&game.shoo_identities, &username, shoo_user_id) {
+    if !can_act_as_player(&game.clerk_identities, &username, clerk_user_id) {
         return text_response(StatusCode::FORBIDDEN, "not authorized for player");
     }
 
@@ -898,7 +896,7 @@ fn choose_recycle_card_response(
 fn activate_calculated_shooting_response(
     req: &Request<Body>,
     state: &Arc<ServerState>,
-    shoo_user_id: Option<&str>,
+    clerk_user_id: Option<&str>,
 ) -> Response<Body> {
     let joincode = header_value(req, "joincode");
     let username = header_value(req, "username");
@@ -916,7 +914,7 @@ fn activate_calculated_shooting_response(
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
     };
 
-    if !can_act_as_player(&game.shoo_identities, &username, shoo_user_id) {
+    if !can_act_as_player(&game.clerk_identities, &username, clerk_user_id) {
         return text_response(StatusCode::FORBIDDEN, "not authorized for player");
     }
 
@@ -1017,37 +1015,19 @@ struct MyGamePlayerResponse {
     picture: Option<String>,
 }
 
-#[derive(Serialize)]
-struct ShooSettingsResponse {
-    username: String,
-    picture: String,
-    has_custom_username: bool,
-    has_custom_picture: bool,
-}
-
 #[derive(Clone, Debug)]
-struct VerifiedShooIdentity {
+struct VerifiedClerkIdentity {
     user_id: String,
-    default_username: String,
     default_picture: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct ShooTokenClaims {
+struct ClerkTokenClaims {
     sub: String,
     azp: String,
     iss: String,
     #[serde(default)]
-    email: Option<String>,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
     picture: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct UnverifiedShooTokenClaims {
-    iss: String,
 }
 
 #[derive(Serialize)]
@@ -1069,25 +1049,25 @@ fn can_view_player_private_data(
     game: &GameState,
     player_name: &str,
     username: Option<&str>,
-    shoo_user_id: Option<&str>,
+    clerk_user_id: Option<&str>,
 ) -> bool {
     if Some(player_name) != username {
         return false;
     }
 
-    match game.shoo_identities.get(player_name) {
-        Some(expected_shoo_user_id) => Some(expected_shoo_user_id.as_str()) == shoo_user_id,
+    match game.clerk_identities.get(player_name) {
+        Some(expected_clerk_user_id) => Some(expected_clerk_user_id.as_str()) == clerk_user_id,
         None => true,
     }
 }
 
 fn can_act_as_player(
-    shoo_identities: &std::collections::HashMap<String, String>,
+    clerk_identities: &std::collections::HashMap<String, String>,
     player_name: &str,
-    shoo_user_id: Option<&str>,
+    clerk_user_id: Option<&str>,
 ) -> bool {
-    match shoo_identities.get(player_name) {
-        Some(expected_shoo_user_id) => Some(expected_shoo_user_id.as_str()) == shoo_user_id,
+    match clerk_identities.get(player_name) {
+        Some(expected_clerk_user_id) => Some(expected_clerk_user_id.as_str()) == clerk_user_id,
         None => true,
     }
 }
@@ -1095,14 +1075,14 @@ fn can_act_as_player(
 fn game_state_response_for_player<'a>(
     game: &'a GameState,
     username: Option<&str>,
-    shoo_user_id: Option<&str>,
+    clerk_user_id: Option<&str>,
 ) -> GameStateResponse<'a> {
     let can_preview_radar = game
         .players
         .get(game.current_turn_player)
         .is_some_and(|player| {
             Some(player.name.as_str()) == username
-                && can_view_player_private_data(game, &player.name, username, shoo_user_id)
+                && can_view_player_private_data(game, &player.name, username, clerk_user_id)
                 && player.health > 0
                 && player.hand.iter().any(|card| card.id == "radar")
         });
@@ -1125,10 +1105,10 @@ fn game_state_response_for_player<'a>(
         .map(|player| PlayerResponse {
             name: &player.name,
             picture: game
-                .shoo_pictures
+                .clerk_pictures
                 .get(&player.name)
                 .map(|picture| picture.as_str()),
-            hand: if can_view_player_private_data(game, &player.name, username, shoo_user_id) {
+            hand: if can_view_player_private_data(game, &player.name, username, clerk_user_id) {
                 &player.hand
             } else {
                 &[]
@@ -1153,159 +1133,105 @@ fn game_state_response_for_player<'a>(
     }
 }
 
-fn normalized_header_value(req: &Request<Body>, name: &str) -> String {
-    header_value(req, name)
-        .map(|value| value.trim().to_string())
-        .unwrap_or_default()
-}
-
-fn decode_unverified_shoo_claims(token: &str) -> Result<UnverifiedShooTokenClaims, String> {
-    let payload = token
-        .split('.')
-        .nth(1)
-        .ok_or_else(|| "invalid shoo token: missing payload".to_string())?;
-    let decoded = URL_SAFE_NO_PAD
-        .decode(payload)
-        .map_err(|err| format!("invalid shoo token payload: {}", err))?;
-
-    serde_json::from_slice(&decoded)
-        .map_err(|err| format!("invalid shoo token payload: {}", err))
-}
-
-fn shoo_issuer_from_claims(issuer: &str) -> Result<String, String> {
-    let issuer = issuer.trim();
+fn configured_clerk_issuer(settings: &ServerSettings) -> Result<String, String> {
+    let issuer = settings.clerk_issuer_url.trim();
     if issuer.is_empty() {
-        return Err("shoo token missing issuer".to_string());
+        return Err("Clerk issuer is not configured".to_string());
     }
 
     if !issuer.starts_with("https://") {
-        return Err("shoo token has invalid issuer".to_string());
+        return Err("Clerk issuer must start with https://".to_string());
     }
 
     let issuer_host = issuer.trim_start_matches("https://");
     if !issuer_host.ends_with(".clerk.accounts.dev") {
-        return Err("shoo token has unsupported issuer".to_string());
+        return Err("Clerk issuer has unsupported host".to_string());
     }
 
     Ok(issuer.to_string())
 }
 
-fn shoo_default_username_from_request(req: &Request<Body>, claims: &ShooTokenClaims) -> String {
-    let header_username = normalized_header_value(req, "shoo_default_username");
-    if !header_username.is_empty() {
-        return header_username;
-    }
-
-    claims
-        .name
-        .clone()
-        .or(claims.email.clone())
-        .unwrap_or_default()
-}
-
-fn shoo_default_picture_from_request(req: &Request<Body>, claims: &ShooTokenClaims) -> String {
-    let header_picture = normalized_header_value(req, "shoo_default_picture");
-    if !header_picture.is_empty() {
-        return header_picture;
-    }
-
-    let fallback_picture = normalized_header_value(req, "shoo_picture");
-    if !fallback_picture.is_empty() {
-        return fallback_picture;
-    }
-
+fn clerk_default_picture_from_claims(claims: &ClerkTokenClaims) -> String {
     claims.picture.clone().unwrap_or_default()
 }
 
-async fn verify_shoo_identity(
+fn clerk_picture_for_request(
+    req: &Request<Body>,
+    clerk_identity: Option<&VerifiedClerkIdentity>,
+) -> String {
+    let Some(identity) = clerk_identity else {
+        return String::new();
+    };
+
+    header_value(req, "clerk_picture")
+        .map(|picture| picture.trim().to_string())
+        .filter(|picture| !picture.is_empty())
+        .unwrap_or_else(|| identity.default_picture.clone())
+}
+
+async fn verify_clerk_identity(
     req: &Request<Body>,
     settings: &ServerSettings,
-) -> Result<Option<VerifiedShooIdentity>, String> {
-    let Some(token) = header_value(req, "shoo_token").filter(|token| !token.trim().is_empty())
+) -> Result<Option<VerifiedClerkIdentity>, String> {
+    let Some(token) = header_value(req, "clerk_token").filter(|token| !token.trim().is_empty())
     else {
         return Ok(None);
     };
 
-    let header = decode_header(&token).map_err(|err| format!("invalid shoo token: {}", err))?;
+    let header = decode_header(&token).map_err(|err| format!("invalid Clerk token: {}", err))?;
     if header.alg != Algorithm::RS256 {
-        return Err("invalid shoo token algorithm".to_string());
+        return Err("invalid Clerk token algorithm".to_string());
     }
 
     let Some(kid) = header.kid else {
-        return Err("shoo token missing key id".to_string());
+        return Err("Clerk token missing key id".to_string());
     };
 
-    let claims_unverified = decode_unverified_shoo_claims(&token)?;
-    let issuer = shoo_issuer_from_claims(&claims_unverified.iss)?;
+    let issuer = configured_clerk_issuer(settings)?;
     let jwks: JwkSet = reqwest::get(format!("{}/.well-known/jwks.json", issuer))
         .await
-        .map_err(|err| format!("failed to fetch Shoo keys: {}", err))?
+        .map_err(|err| format!("failed to fetch Clerk keys: {}", err))?
         .error_for_status()
-        .map_err(|err| format!("failed to fetch Shoo keys: {}", err))?
+        .map_err(|err| format!("failed to fetch Clerk keys: {}", err))?
         .json()
         .await
-        .map_err(|err| format!("failed to parse Shoo keys: {}", err))?;
+        .map_err(|err| format!("failed to parse Clerk keys: {}", err))?;
 
     let jwk = jwks
         .find(&kid)
-        .ok_or_else(|| "shoo token key not found".to_string())?;
+        .ok_or_else(|| "Clerk token key not found".to_string())?;
     let decoding_key =
-        DecodingKey::from_jwk(jwk).map_err(|err| format!("invalid Shoo key: {}", err))?;
+        DecodingKey::from_jwk(jwk).map_err(|err| format!("invalid Clerk key: {}", err))?;
 
     let mut validation = Validation::new(Algorithm::RS256);
     validation.validate_aud = false;
     validation.validate_nbf = true;
     validation.set_required_spec_claims(&["exp", "iss", "nbf", "sub"]);
+    validation.set_issuer(&[issuer.as_str()]);
 
-    let token = decode::<ShooTokenClaims>(&token, &decoding_key, &validation)
-        .map_err(|err| format!("invalid shoo token: {}", err))?;
+    let token = decode::<ClerkTokenClaims>(&token, &decoding_key, &validation)
+        .map_err(|err| format!("invalid Clerk token: {}", err))?;
     let claims = token.claims;
     if claims.sub.trim().is_empty() {
-        return Err("shoo token missing sub".to_string());
+        return Err("Clerk token missing sub".to_string());
     }
     if claims.azp.trim() != server_connect_url(settings) {
-        return Err("shoo token azp does not match server connect url".to_string());
+        return Err("Clerk token azp does not match server connect url".to_string());
     }
     if claims.iss.trim() != issuer {
-        return Err("shoo token issuer does not match fetched issuer".to_string());
+        return Err("Clerk token issuer does not match fetched issuer".to_string());
     }
 
-    let default_username = shoo_default_username_from_request(req, &claims);
-    let default_picture = shoo_default_picture_from_request(req, &claims);
+    let default_picture = clerk_default_picture_from_claims(&claims);
 
-    Ok(Some(VerifiedShooIdentity {
+    Ok(Some(VerifiedClerkIdentity {
         user_id: claims.sub,
-        default_username,
         default_picture,
     }))
 }
 
-fn shoo_bad_request(error: String) -> Response<Body> {
+fn clerk_bad_request(error: String) -> Response<Body> {
     text_response(StatusCode::UNAUTHORIZED, error)
-}
-
-fn shoo_settings_response(
-    state: &Arc<ServerState>,
-    shoo_user_id: &str,
-    default_username: String,
-    default_picture: String,
-) -> ShooSettingsResponse {
-    let settings = lock_or_recover(&state.shoo_settings, "shoo_settings");
-    let saved = settings.get(shoo_user_id);
-    ShooSettingsResponse {
-        username: saved
-            .and_then(|settings| settings.username.clone())
-            .unwrap_or(default_username),
-        picture: saved
-            .and_then(|settings| settings.picture.clone())
-            .unwrap_or(default_picture),
-        has_custom_username: saved
-            .and_then(|settings| settings.username.as_ref())
-            .is_some(),
-        has_custom_picture: saved
-            .and_then(|settings| settings.picture.as_ref())
-            .is_some(),
-    }
 }
 
 fn load_certs(path: &str) -> Vec<Certificate> {
@@ -1345,21 +1271,16 @@ async fn handle_request(
     server_settings: ServerSettings,
 ) -> Result<Response<Body>, Infallible> {
     let path = req.uri().path().to_string();
-    let shoo_identity = match verify_shoo_identity(&req, &server_settings).await {
+    let clerk_identity = match verify_clerk_identity(&req, &server_settings).await {
         Ok(identity) => identity,
-        Err(error) => return Ok(shoo_bad_request(error)),
+        Err(error) => return Ok(clerk_bad_request(error)),
     };
-    if shoo_identity.is_none()
-        && (req.headers().contains_key("shoo_user_id")
-            || req.headers().contains_key("shoo_picture")
-            || req.headers().contains_key("shoo_default_username")
-            || req.headers().contains_key("shoo_default_picture"))
-    {
-        return Ok(shoo_bad_request("missing shoo_token".to_string()));
+    if clerk_identity.is_none() && req.headers().contains_key("clerk_user_id") {
+        return Ok(clerk_bad_request("missing clerk_token".to_string()));
     }
 
     match (req.method(), path.as_str()) {
-        (&Method::GET, "/") | (&Method::GET, "/index.html") | (&Method::GET, "/shoo/callback") => {
+        (&Method::GET, "/") | (&Method::GET, "/index.html") | (&Method::GET, "/clerk/callback") => {
             let p = format!("{}/index.html", WEBSITE_DIR);
             serve_file(&p, "text/html; charset=utf-8").await
         }
@@ -1381,89 +1302,19 @@ async fn handle_request(
         }
         (&Method::GET, "/lobby.js") => serve_lobby_js(&server_settings).await,
         (&Method::GET, "/checkOnline") => Ok(text_response(StatusCode::OK, "Online")),
-        (&Method::GET, "/shooSettings") => match shoo_identity.as_ref() {
-            Some(shoo_identity) => Ok(json_response(
-                StatusCode::OK,
-                serde_json::to_string(&shoo_settings_response(
-                    &state,
-                    &shoo_identity.user_id,
-                    shoo_identity.default_username.clone(),
-                    shoo_identity.default_picture.clone(),
-                ))
-                .unwrap(),
-            )),
-            None => Ok(text_response(StatusCode::BAD_REQUEST, "missing shoo_token")),
-        },
-        (&Method::POST, "/shooSettings") => match shoo_identity.as_ref() {
-            Some(shoo_identity) => {
-                let default_username = shoo_identity.default_username.clone();
-                let default_picture = shoo_identity.default_picture.clone();
-                let username = normalized_header_value(&req, "settings_username");
-                let picture = normalized_header_value(&req, "settings_picture");
-
-                let custom_username = if username.is_empty() || username == default_username {
-                    None
-                } else {
-                    Some(username)
-                };
-                let custom_picture = if picture.is_empty() || picture == default_picture {
-                    None
-                } else {
-                    Some(picture)
-                };
-
-                {
-                    let mut settings = lock_or_recover(&state.shoo_settings, "shoo_settings");
-                    if custom_username.is_none() && custom_picture.is_none() {
-                        settings.remove(&shoo_identity.user_id);
-                    } else {
-                        settings.insert(
-                            shoo_identity.user_id.clone(),
-                            ShooUserSettings {
-                                username: custom_username,
-                                picture: custom_picture,
-                            },
-                        );
-                    }
-                }
-
-                Ok(json_response(
-                    StatusCode::OK,
-                    serde_json::to_string(&shoo_settings_response(
-                        &state,
-                        &shoo_identity.user_id,
-                        default_username,
-                        default_picture,
-                    ))
-                    .unwrap(),
-                ))
-            }
-            None => Ok(text_response(StatusCode::BAD_REQUEST, "missing shoo_token")),
-        },
         (&Method::POST, "/createGame") => {
             let username = header_value(&req, "username");
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.clone());
-            let mut shoo_picture = shoo_identity
-                .as_ref()
-                .map(|identity| identity.default_picture.clone())
-                .unwrap_or_default();
-            if let Some(shoo_user_id) = shoo_user_id.as_ref() {
-                if let Some(custom_picture) = lock_or_recover(&state.shoo_settings, "shoo_settings")
-                    .get(shoo_user_id)
-                    .and_then(|settings| settings.picture.clone())
-                {
-                    shoo_picture = custom_picture;
-                }
-            }
+            let clerk_picture = clerk_picture_for_request(&req, clerk_identity.as_ref());
             match username {
                 Some(username) => {
                     let joincode = unique_joincode_for_state(&state);
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     lobbies.insert(
                         joincode.clone(),
-                        LobbyState::new(username, shoo_user_id, shoo_picture),
+                        LobbyState::new(username, clerk_user_id, clerk_picture),
                     );
                     Ok(Response::builder()
                         .status(StatusCode::OK)
@@ -1480,21 +1331,10 @@ async fn handle_request(
         (&Method::POST, "/joinGame") => {
             let username = header_value(&req, "username");
             let joincode = header_value(&req, "joincode");
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.clone());
-            let mut shoo_picture = shoo_identity
-                .as_ref()
-                .map(|identity| identity.default_picture.clone())
-                .unwrap_or_default();
-            if let Some(shoo_user_id) = shoo_user_id.as_ref() {
-                if let Some(custom_picture) = lock_or_recover(&state.shoo_settings, "shoo_settings")
-                    .get(shoo_user_id)
-                    .and_then(|settings| settings.picture.clone())
-                {
-                    shoo_picture = custom_picture;
-                }
-            }
+            let clerk_picture = clerk_picture_for_request(&req, clerk_identity.as_ref());
             match (username, joincode) {
                 (Some(username), Some(joincode)) => {
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
@@ -1507,10 +1347,12 @@ async fn handle_request(
                                 ))
                             } else {
                                 lobby.players.push(username.clone());
-                                if let Some(shoo_user_id) = shoo_user_id {
-                                    lobby.shoo_identities.insert(username.clone(), shoo_user_id);
-                                    if !shoo_picture.is_empty() {
-                                        lobby.shoo_pictures.insert(username, shoo_picture);
+                                if let Some(clerk_user_id) = clerk_user_id {
+                                    lobby
+                                        .clerk_identities
+                                        .insert(username.clone(), clerk_user_id);
+                                    if !clerk_picture.is_empty() {
+                                        lobby.clerk_pictures.insert(username, clerk_picture);
                                     }
                                 }
                                 Ok(text_response(StatusCode::OK, "joined game lobby"))
@@ -1525,16 +1367,16 @@ async fn handle_request(
                 )),
             }
         }
-        (&Method::GET, "/myGames") => match shoo_identity.as_ref() {
-            Some(shoo_identity) => {
-                let shoo_user_id = &shoo_identity.user_id;
+        (&Method::GET, "/myGames") => match clerk_identity.as_ref() {
+            Some(clerk_identity) => {
+                let clerk_user_id = &clerk_identity.user_id;
                 let mut games_for_user = Vec::new();
 
                 {
                     let lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     for (joincode, lobby) in lobbies.iter() {
-                        for (username, identity) in lobby.shoo_identities.iter() {
-                            if identity == shoo_user_id {
+                        for (username, identity) in lobby.clerk_identities.iter() {
+                            if identity == clerk_user_id {
                                 games_for_user.push(MyGameResponse {
                                     joincode: joincode.clone(),
                                     username: username.clone(),
@@ -1544,7 +1386,7 @@ async fn handle_request(
                                         .iter()
                                         .map(|player| MyGamePlayerResponse {
                                             name: player.clone(),
-                                            picture: lobby.shoo_pictures.get(player).cloned(),
+                                            picture: lobby.clerk_pictures.get(player).cloned(),
                                         })
                                         .collect(),
                                     current_turn_player: None,
@@ -1557,8 +1399,8 @@ async fn handle_request(
                 {
                     let games = lock_or_recover(&state.games, "games");
                     for (joincode, game) in games.iter() {
-                        for (username, identity) in game.shoo_identities.iter() {
-                            if identity == shoo_user_id {
+                        for (username, identity) in game.clerk_identities.iter() {
+                            if identity == clerk_user_id {
                                 games_for_user.push(MyGameResponse {
                                     joincode: joincode.clone(),
                                     username: username.clone(),
@@ -1568,7 +1410,7 @@ async fn handle_request(
                                         .iter()
                                         .map(|player| MyGamePlayerResponse {
                                             name: player.name.clone(),
-                                            picture: game.shoo_pictures.get(&player.name).cloned(),
+                                            picture: game.clerk_pictures.get(&player.name).cloned(),
                                         })
                                         .collect(),
                                     current_turn_player: game
@@ -1586,12 +1428,15 @@ async fn handle_request(
                     serde_json::to_string(&games_for_user).unwrap(),
                 ))
             }
-            None => Ok(text_response(StatusCode::BAD_REQUEST, "missing shoo_token")),
+            None => Ok(text_response(
+                StatusCode::BAD_REQUEST,
+                "missing clerk_token",
+            )),
         },
         (&Method::POST, "/leaveLobby") => {
             let username = header_value(&req, "username");
             let joincode = header_value(&req, "joincode");
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
             match (username, joincode) {
@@ -1603,9 +1448,9 @@ async fn handle_request(
                                 lobby.players.iter().position(|player| player == &username)
                             {
                                 if !can_act_as_player(
-                                    &lobby.shoo_identities,
+                                    &lobby.clerk_identities,
                                     &username,
-                                    shoo_user_id,
+                                    clerk_user_id,
                                 ) {
                                     return Ok(text_response(
                                         StatusCode::FORBIDDEN,
@@ -1613,8 +1458,8 @@ async fn handle_request(
                                     ));
                                 }
                                 lobby.players.remove(index);
-                                lobby.shoo_identities.remove(&username);
-                                lobby.shoo_pictures.remove(&username);
+                                lobby.clerk_identities.remove(&username);
+                                lobby.clerk_pictures.remove(&username);
                                 if lobby.players.is_empty() {
                                     lobbies.remove(&joincode);
                                 }
@@ -1646,7 +1491,7 @@ async fn handle_request(
                                 .map(|player| LobbyPlayerResponse {
                                     name: player,
                                     picture: lobby
-                                        .shoo_pictures
+                                        .clerk_pictures
                                         .get(player)
                                         .map(|picture| picture.as_str()),
                                 })
@@ -1672,7 +1517,7 @@ async fn handle_request(
         (&Method::POST, "/startGame") => {
             let joincode = header_value(&req, "joincode");
             let username = header_value(&req, "username");
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
             match (joincode, username) {
@@ -1691,9 +1536,9 @@ async fn handle_request(
                         }
                         Some(lobby)
                             if !can_act_as_player(
-                                &lobby.shoo_identities,
+                                &lobby.clerk_identities,
                                 &username,
-                                shoo_user_id,
+                                clerk_user_id,
                             ) =>
                         {
                             Ok(text_response(
@@ -1718,8 +1563,8 @@ async fn handle_request(
                             let mut game_state = GameState::new(
                                 joincode.clone(),
                                 lobby.players.clone(),
-                                lobby.shoo_identities,
-                                lobby.shoo_pictures,
+                                lobby.clerk_identities,
+                                lobby.clerk_pictures,
                                 settings,
                             );
                             game_state.chat_messages = lobby.chat_messages;
@@ -1754,7 +1599,7 @@ async fn handle_request(
         (&Method::POST, "/endTurn") => {
             let joincode: Option<String> = header_value(&req, "joincode");
             let username: Option<String> = header_value(&req, "username");
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
             match joincode {
@@ -1771,9 +1616,9 @@ async fn handle_request(
                             };
                             if username.as_deref() != Some(current_player.name.as_str())
                                 || !can_act_as_player(
-                                    &game.shoo_identities,
+                                    &game.clerk_identities,
                                     &current_player.name,
-                                    shoo_user_id,
+                                    clerk_user_id,
                                 )
                             {
                                 return Ok(text_response(
@@ -1803,7 +1648,7 @@ async fn handle_request(
         (&Method::GET, "/gameState") => {
             let joincode: Option<String> = header_value(&req, "joincode");
             let username: Option<String> = header_value(&req, "username");
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
             match joincode {
@@ -1814,7 +1659,7 @@ async fn handle_request(
                             let body = serde_json::to_string(&game_state_response_for_player(
                                 game,
                                 username.as_deref(),
-                                shoo_user_id,
+                                clerk_user_id,
                             ))
                             .unwrap();
                             Ok(json_response(StatusCode::OK, body))
@@ -1831,7 +1676,7 @@ async fn handle_request(
         (&Method::POST, "/sendChat") => {
             let joincode = header_value(&req, "joincode");
             let sender = header_value(&req, "username").unwrap_or_else(|| "Anonymous".to_string());
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
             let timestamp = current_timestamp();
@@ -1842,7 +1687,7 @@ async fn handle_request(
                     {
                         let mut games = lock_or_recover(&state.games, "games");
                         if let Some(game) = games.get_mut(&joincode) {
-                            if !can_act_as_player(&game.shoo_identities, &sender, shoo_user_id) {
+                            if !can_act_as_player(&game.clerk_identities, &sender, clerk_user_id) {
                                 return Ok(text_response(
                                     StatusCode::FORBIDDEN,
                                     "not authorized for player",
@@ -1860,7 +1705,7 @@ async fn handle_request(
                     {
                         let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                         if let Some(lobby) = lobbies.get_mut(&joincode) {
-                            if !can_act_as_player(&lobby.shoo_identities, &sender, shoo_user_id) {
+                            if !can_act_as_player(&lobby.clerk_identities, &sender, clerk_user_id) {
                                 return Ok(text_response(
                                     StatusCode::FORBIDDEN,
                                     "not authorized for player",
@@ -1920,7 +1765,7 @@ async fn handle_request(
         (&Method::POST, "/quitGame") => {
             let joincode = header_value(&req, "joincode");
             let username = header_value(&req, "username");
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
             match (joincode, username) {
@@ -1931,9 +1776,9 @@ async fn handle_request(
                             match game.players.iter().position(|p| p.name == username) {
                                 Some(player_index) => {
                                     if !can_act_as_player(
-                                        &game.shoo_identities,
+                                        &game.clerk_identities,
                                         &username,
-                                        shoo_user_id,
+                                        clerk_user_id,
                                     ) {
                                         return Ok(text_response(
                                             StatusCode::FORBIDDEN,
@@ -1944,8 +1789,8 @@ async fn handle_request(
                                     if game.remove_player(player_index, true) {
                                         games.remove(&joincode);
                                     } else {
-                                        game.shoo_identities.remove(&username);
-                                        game.shoo_pictures.remove(&username);
+                                        game.clerk_identities.remove(&username);
+                                        game.clerk_pictures.remove(&username);
                                     }
 
                                     return Ok(text_response(StatusCode::OK, "quit"));
@@ -1965,9 +1810,9 @@ async fn handle_request(
                         Some(lobby) => match lobby.players.iter().position(|p| p == &username) {
                             Some(player_index) => {
                                 if !can_act_as_player(
-                                    &lobby.shoo_identities,
+                                    &lobby.clerk_identities,
                                     &username,
-                                    shoo_user_id,
+                                    clerk_user_id,
                                 ) {
                                     return Ok(text_response(
                                         StatusCode::FORBIDDEN,
@@ -1978,8 +1823,8 @@ async fn handle_request(
                                 if lobby.players.is_empty() {
                                     lobbies.remove(&joincode);
                                 } else {
-                                    lobby.shoo_identities.remove(&username);
-                                    lobby.shoo_pictures.remove(&username);
+                                    lobby.clerk_identities.remove(&username);
+                                    lobby.clerk_pictures.remove(&username);
                                 }
 
                                 Ok(text_response(StatusCode::OK, "quit"))
@@ -2000,31 +1845,31 @@ async fn handle_request(
             }
         }
         (&Method::POST, "/playCard") | (&Method::POST, "/playcard") => {
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
-            Ok(play_card_response(&req, &state, shoo_user_id))
+            Ok(play_card_response(&req, &state, clerk_user_id))
         }
         (&Method::POST, "/chooseRecycleCard") | (&Method::POST, "/chooserecyclecard") => {
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
-            Ok(choose_recycle_card_response(&req, &state, shoo_user_id))
+            Ok(choose_recycle_card_response(&req, &state, clerk_user_id))
         }
         (&Method::POST, "/chooseRecycleDiscard") | (&Method::POST, "/chooserecyclediscard") => {
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
-            Ok(choose_recycle_discard_response(&req, &state, shoo_user_id))
+            Ok(choose_recycle_discard_response(&req, &state, clerk_user_id))
         }
         (&Method::POST, "/activateCalculatedShooting") => {
-            let shoo_user_id = shoo_identity
+            let clerk_user_id = clerk_identity
                 .as_ref()
                 .map(|identity| identity.user_id.as_str());
             Ok(activate_calculated_shooting_response(
                 &req,
                 &state,
-                shoo_user_id,
+                clerk_user_id,
             ))
         }
         (&Method::POST, "/activateDelayedCard") | (&Method::POST, "/useRadar") => {

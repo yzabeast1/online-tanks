@@ -161,12 +161,10 @@ function startSpectating() {
 }
 async function joinLobby() {
     spectating = false
-    const account = shooAccountDetails();
+    const account = clerkAccountDetails();
     if (account) {
-        shooAccount = account;
-        await ensureShooSettingsLoaded(account);
-        applyShooDefaults(account);
-        updateShooUi();
+        clerkAccount = account;
+        applyClerkDefaults(account);
     }
     username = document.getElementById('username-input').value;
     joincode = document.getElementById('joincode-input').value;
@@ -187,7 +185,7 @@ async function joinLobby() {
         'Content-Type': 'application/json',
         'username': username,
         'joincode': joincode,
-        ...shooHeaders(account)
+        ...clerkHeaders(account)
     };
     fetch(`https://${serverip}/joinGame`, {
         method: 'POST',
@@ -196,7 +194,7 @@ async function joinLobby() {
         .then(response => {
             if (!response.ok) throw new Error('HTTPS failed'); // Handle HTTP errors
             document.getElementById('lobby-show-code').innerText = "JoinCode: " + joincode
-            loadMyShooGames();
+            loadMyClerkGames();
         })
         .catch(error => {
             console.error('HTTPS error:', error);
@@ -208,12 +206,10 @@ async function joinLobby() {
 }
 async function newGame() {
     spectating = false
-    const account = shooAccountDetails();
+    const account = clerkAccountDetails();
     if (account) {
-        shooAccount = account;
-        await ensureShooSettingsLoaded(account);
-        applyShooDefaults(account);
-        updateShooUi();
+        clerkAccount = account;
+        applyClerkDefaults(account);
     }
     username = document.getElementById('username-input').value;
     if (username.trim() === '') {
@@ -228,7 +224,7 @@ async function newGame() {
     const headers = {
         'Content-Type': 'application/json',
         'username': username,
-        ...shooHeaders(account)
+        ...clerkHeaders(account)
     };
 
     // Try sending the message using HTTPS
@@ -243,7 +239,7 @@ async function newGame() {
             document.getElementById('lobby-show-code').innerText = "JoinCode: " + document.getElementById('joincode-input').value
             lobbyPlayersInterval = setInterval(lobbyPlayers, playersInLobbyCooldown);
             addLobbyPlayer(username, 'server-messsage')
-            loadMyShooGames();
+            loadMyClerkGames();
             lobbyPlayers();
             startChat();
         })
@@ -252,7 +248,7 @@ async function newGame() {
         });
 }
 function lobbyPlayers() {
-    const account = shooAccountDetails();
+    const account = clerkAccountDetails();
     const headers = { 'joincode': joincode }; // Add joincode header
     fetch(`https://${serverip}/lobbyState`, { headers })
         .then(response => {
@@ -321,14 +317,14 @@ function addLobbyPlayer(player, className) {
     playerList.appendChild(messageElement);
 }
 function leaveLobby() {
-    const account = shooAccountDetails();
+    const account = clerkAccountDetails();
     username = document.getElementById('username-input').value;
     joincode = document.getElementById('joincode-input').value;
     const headers = {
         'Content-Type': 'application/json',
         'username': username,
         'joincode': joincode,
-        ...shooHeaders(account)
+        ...clerkHeaders(account)
     };
     fetch(`https://${serverip}/leaveLobby`, {
         method: 'POST',

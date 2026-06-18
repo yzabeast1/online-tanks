@@ -56,8 +56,7 @@ button:active {
 }
 
 input[type="text"],
-select,
-.settings-menu summary {
+select {
     width: 100%;
     min-height: 42px;
     border: 1px solid var(--line);
@@ -149,12 +148,6 @@ select option {
     max-width: 100%;
 }
 
-.login-container #shoo-account {
-    color: var(--muted);
-    font-size: 14px;
-    overflow-wrap: anywhere;
-}
-
 /* Custom sign-in button to match username/joincode inputs */
 .custom-signin .google-btn {
     width: 100%;
@@ -175,7 +168,6 @@ select option {
     box-shadow: 0 10px 22px rgba(214, 168, 79, 0.12);
 }
 
-#shoo-account button,
 .my-game-button {
     width: 100%;
     color: var(--text);
@@ -321,46 +313,6 @@ select option {
     box-shadow: none;
 }
 
-.shoo-account-summary {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.shoo-account-picture {
-    width: 42px;
-    height: 42px;
-    flex: 0 0 42px;
-    border: 1px solid var(--line);
-    border-radius: 50%;
-    object-fit: cover;
-    background: rgba(244, 239, 224, 0.08);
-}
-
-.shoo-account-details {
-    min-width: 0;
-}
-
-.shoo-account-label {
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-}
-
-.shoo-account-name {
-    color: var(--text);
-    font-weight: 800;
-    overflow-wrap: anywhere;
-}
-
-.shoo-account-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-top: 10px;
-}
-
 #my-games {
     display: grid;
     gap: 8px;
@@ -437,69 +389,6 @@ select option {
 }
 
 .lobby-settings-status {
-    min-height: 18px;
-    color: var(--muted);
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.settings-menu {
-    border-top: 1px solid var(--line);
-    padding-top: 10px;
-}
-
-.settings-menu summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    color: var(--text);
-    font-weight: 800;
-    cursor: pointer;
-    list-style: none;
-}
-
-.settings-menu summary::-webkit-details-marker {
-    display: none;
-}
-
-.settings-menu summary::after {
-    content: "+";
-    color: var(--accent-strong);
-    font-size: 18px;
-    line-height: 1;
-}
-
-.settings-menu details[open] summary::after {
-    content: "-";
-}
-
-.settings-form {
-    display: grid;
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.settings-form label {
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-}
-
-.settings-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-}
-
-.settings-actions button[type="button"] {
-    color: var(--text);
-    background: rgba(244, 239, 224, 0.08);
-    border-color: var(--line);
-    box-shadow: none;
-}
-
-.settings-status {
     min-height: 18px;
     color: var(--muted);
     font-size: 13px;

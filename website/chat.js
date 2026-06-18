@@ -38,7 +38,7 @@ function sendMessage() {
         'joincode': joincode,  // Use dynamic joincode
         'username': username,  // Use dynamic username
         'text': message,
-        ...shooHeaders(shooAccountDetails()),
+        ...clerkHeaders(clerkAccountDetails()),
     };
 
     // Send the message to the server with headers

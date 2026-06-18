@@ -460,7 +460,7 @@ function sendPlayedCardHeaders(extraHeaders) {
         username: username,
         cardid: cardSelected,
         ...extraHeaders,
-        ...shooHeaders(shooAccountDetails()),
+        ...clerkHeaders(clerkAccountDetails()),
     }
     postWithFallback(`https://${serverip}/playcard`, headers)
     // You can now process the selected player and discard options here
@@ -555,7 +555,7 @@ function sendRecycleDiscardToServer() {
         joincode: joincode,
         username: username,
         discardcard: discardCard,
-        ...shooHeaders(shooAccountDetails()),
+        ...clerkHeaders(clerkAccountDetails()),
     });
     setPopupRequired(false);
     document.getElementById('playCardBtn').innerText = 'Play Card';
@@ -570,7 +570,7 @@ function sendRecycleChoiceToServer() {
         joincode: joincode,
         username: username,
         recyclecard: recycleCard,
-        ...shooHeaders(shooAccountDetails()),
+        ...clerkHeaders(clerkAccountDetails()),
     });
     setPopupRequired(false);
     document.getElementById('playCardBtn').innerText = 'Play Card';
