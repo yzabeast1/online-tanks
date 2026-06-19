@@ -206,6 +206,11 @@ function showInlineSingleSelection(card, cardElement, action) {
     const options = singleSelectionOptions(action, card);
     if (!options || options.length === 0) return false;
 
+    if (options.length === 1) {
+        sendPlayedCardHeaders(options[0].headers);
+        return true;
+    }
+
     const menu = document.createElement('div');
     menu.classList.add('inline-target-menu');
     menu.addEventListener('click', event => event.stopPropagation());
@@ -259,6 +264,15 @@ function triggerActions(actions) {
     document.getElementById('playCardBtn').innerText = 'Play Card';
     const popupContent = document.getElementById('popupContent');
     popupContent.innerHTML = '';  // Clear previous popup content
+
+    const card = deck.find(item => item.id === cardSelected);
+    if (actions.length === 1) {
+        const options = singleSelectionOptions(actions[0], card);
+        if (options?.length === 1) {
+            sendPlayedCardHeaders(options[0].headers);
+            return;
+        }
+    }
 
     actions.forEach(action => {
         if (action === 'target') {

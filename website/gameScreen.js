@@ -368,6 +368,12 @@ function activateCalculatedShootingPopup(cardid) {
     } else if (cardid === 'multi-strike') {
         createMultiStrikePopup();
     } else {
+        const targets = validTargetsForCard(card);
+        if (targets.length === 1) {
+            activateCalculatedShootingHeaders({ target: targets[0].name });
+            return;
+        }
+
         createPlayerSelectPopup(card);
         playButton.style.display = hasValidTargetsForCard(card) ? 'block' : 'none';
     }
@@ -494,16 +500,21 @@ function activateCalculatedShooting() {
     const selectedPlayer = document.getElementById('playerDropdown')?.value;
     const decisionMissileAction = document.getElementById('decisionMissileActionDropdown')?.value;
     const multiStrikeDamageInputs = document.querySelectorAll('.multi-strike-damage');
-    var cardid = cardSelected
-    var headers = {
-        joincode: joincode,
-        username: username,
-        cardid: cardid,
-        ...clerkHeaders(clerkAccountDetails()),
-    }
+    var headers = {}
     if (selectedPlayer) headers.target = selectedPlayer
     if (decisionMissileAction) headers.decision_action = decisionMissileAction
     if (multiStrikeDamageInputs.length > 0) headers.multistrike_allocations = JSON.stringify(multiStrikeAllocations())
+    activateCalculatedShootingHeaders(headers)
+}
+
+function activateCalculatedShootingHeaders(extraHeaders) {
+    var headers = {
+        joincode: joincode,
+        username: username,
+        cardid: cardSelected,
+        ...extraHeaders,
+        ...clerkHeaders(clerkAccountDetails()),
+    }
     postWithFallback(`https://${serverip}/activateCalculatedShooting`, headers)
     closePopup();  // Close the popup after playing the card
 }
