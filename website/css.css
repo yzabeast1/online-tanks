@@ -794,6 +794,18 @@ label[for="show-deck-checkbox"] {
     border: 1px solid rgba(244, 239, 224, 0.18);
     border-radius: 8px;
     background: rgba(18, 22, 16, 0.88);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.radar-order-card:active {
+    cursor: grabbing;
+}
+
+.radar-order-card.dragging {
+    opacity: 0.55;
+    border-color: rgba(244, 239, 224, 0.5);
 }
 
 .radar-order-card img {

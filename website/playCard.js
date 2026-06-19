@@ -1,4 +1,5 @@
 var cardSelected;
+var radarTouchDraggingRow = null;
 function isShootingCard(card) {
     return card && typeof card.card_type === 'object' && card.card_type !== null && card.card_type.hasOwnProperty('Shooting');
 }
@@ -224,6 +225,13 @@ function createRadarOrderControls() {
         const row = document.createElement('div');
         row.classList.add('radar-order-card');
         row.dataset.originalIndex = index.toString();
+        row.draggable = true;
+        row.addEventListener('dragstart', handleRadarDragStart);
+        row.addEventListener('dragend', handleRadarDragEnd);
+        row.addEventListener('touchstart', handleRadarTouchStart, { passive: true });
+        row.addEventListener('touchmove', handleRadarTouchMove, { passive: false });
+        row.addEventListener('touchend', handleRadarTouchEnd);
+        row.addEventListener('touchcancel', handleRadarTouchEnd);
 
         const img = document.createElement('img');
         img.src = `https://${serverip}/images/${cardImageFolder(card.card_type)}/${card.id}.png`;
@@ -253,11 +261,67 @@ function createRadarOrderControls() {
         list.appendChild(row);
     });
 
+    list.addEventListener('dragover', handleRadarDragOver);
     popupContent.appendChild(list);
     updateRadarOrderButtons();
 
     const playButton = document.getElementById('playCardBtn');
     playButton.style.display = radarCards.length > 0 ? 'block' : 'none';
+}
+function handleRadarDragStart(event) {
+    event.currentTarget.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', event.currentTarget.dataset.originalIndex);
+}
+function handleRadarDragEnd(event) {
+    event.currentTarget.classList.remove('dragging');
+    updateRadarOrderButtons();
+}
+function handleRadarDragOver(event) {
+    event.preventDefault();
+    const draggingRow = document.querySelector('.radar-order-card.dragging');
+    if (!draggingRow) return;
+
+    moveDraggedRadarRow(event.currentTarget, draggingRow, event.clientY);
+}
+function handleRadarTouchStart(event) {
+    if (event.target.closest('button')) return;
+    radarTouchDraggingRow = event.currentTarget;
+    radarTouchDraggingRow.classList.add('dragging');
+}
+function handleRadarTouchMove(event) {
+    if (!radarTouchDraggingRow) return;
+
+    event.preventDefault();
+    const touch = event.touches[0];
+    moveDraggedRadarRow(radarTouchDraggingRow.parentElement, radarTouchDraggingRow, touch.clientY);
+}
+function handleRadarTouchEnd() {
+    if (!radarTouchDraggingRow) return;
+
+    radarTouchDraggingRow.classList.remove('dragging');
+    radarTouchDraggingRow = null;
+    updateRadarOrderButtons();
+}
+function moveDraggedRadarRow(list, row, y) {
+    const afterElement = radarDragAfterElement(list, y);
+    if (afterElement) {
+        list.insertBefore(row, afterElement);
+    } else {
+        list.appendChild(row);
+    }
+}
+function radarDragAfterElement(list, y) {
+    const rows = Array.from(list.querySelectorAll('.radar-order-card:not(.dragging)'));
+
+    return rows.reduce((closest, row) => {
+        const box = row.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: row };
+        }
+        return closest;
+    }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
 }
 function moveRadarCard(row, direction) {
     const sibling = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
