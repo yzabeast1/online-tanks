@@ -157,6 +157,85 @@ function clearInlineCardMenus() {
     document.querySelectorAll('.inline-target-menu').forEach(menu => menu.remove());
 }
 
+function singleSelectionOptions(action, card) {
+    if (action === 'target') {
+        return validTargetsForCard(card).map(player => ({
+            value: player.name,
+            text: player.name,
+            headers: { target: player.name },
+        }));
+    }
+
+    if (action === 'queuedcard') {
+        const queuedCards = card.id === 'cold-war'
+            ? validQueuedCardsForColdWar()
+            : validQueuedCardsForDistractorMissile();
+
+        return queuedCards.map(s => {
+            const index = gameData.active_cards.active_calculated_shootings.indexOf(s);
+            const value = `${index}:${s.card_played.id}`;
+            return {
+                value,
+                text: `${s.owner}'s ${s.card_played.name} with countdown ${s.turns_remaining}`,
+                headers: { queuedcard: value },
+            };
+        });
+    }
+
+    if (action === 'discardcard') {
+        const myPlayer = gameData.players.find(p => p.name === username);
+        if (!myPlayer) return [];
+
+        return myPlayer.hand
+            .map((handCard, index) => ({ handCard, index }))
+            .filter(({ handCard }) => handCard && handCard.id !== card.id)
+            .map(({ handCard, index }) => {
+                const value = `${index}:${handCard.id}`;
+                return {
+                    value,
+                    text: handCard.name,
+                    headers: { discardcard: value },
+                };
+            });
+    }
+
+    return null;
+}
+
+function showInlineSingleSelection(card, cardElement, action) {
+    const options = singleSelectionOptions(action, card);
+    if (!options || options.length === 0) return false;
+
+    const menu = document.createElement('div');
+    menu.classList.add('inline-target-menu');
+    menu.addEventListener('click', event => event.stopPropagation());
+
+    const dropdown = document.createElement('select');
+    options.forEach(selection => {
+        const option = document.createElement('option');
+        option.value = selection.value;
+        option.text = selection.text;
+        dropdown.appendChild(option);
+    });
+    menu.appendChild(dropdown);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.innerText = 'Play Card';
+    button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const selected = options.find(selection => selection.value === dropdown.value);
+        if (!selected) return;
+
+        sendPlayedCardHeaders(selected.headers);
+        clearInlineCardMenus();
+    });
+    menu.appendChild(button);
+
+    cardElement.appendChild(menu);
+    return true;
+}
+
 function handleHandCardClick(card, cardElement) {
     if (!canPlayCardNow(card)) return;
 
@@ -169,23 +248,7 @@ function handleHandCardClick(card, cardElement) {
         return;
     }
 
-    if (actions.length === 1 && actions[0] === 'target') {
-        const menu = document.createElement('div');
-        menu.classList.add('inline-target-menu');
-
-        validTargetsForCard(card).forEach(player => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.innerText = player.name;
-            button.addEventListener('click', (event) => {
-                event.stopPropagation();
-                sendPlayedCardHeaders({ target: player.name });
-                clearInlineCardMenus();
-            });
-            menu.appendChild(button);
-        });
-
-        cardElement.appendChild(menu);
+    if (actions.length === 1 && showInlineSingleSelection(card, cardElement, actions[0])) {
         return;
     }
 

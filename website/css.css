@@ -771,11 +771,15 @@ label[for="show-deck-checkbox"] {
     box-shadow: 0 16px 28px rgba(0, 0, 0, 0.38);
 }
 
+.inline-target-menu select,
 .inline-target-menu button {
     width: 100%;
     min-height: 36px;
+}
+
+.inline-target-menu button {
     padding: 7px 10px;
-    text-align: left;
+    text-align: center;
     box-shadow: none;
 }
 
