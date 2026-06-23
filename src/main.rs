@@ -1668,6 +1668,11 @@ async fn handle_request(
                                     "pending recycle choice",
                                 ));
                             }
+                            let ended_turn_player_name = current_player.name.clone();
+                            game.push_server_chat_message(format!(
+                                "{} ended their turn",
+                                ended_turn_player_name
+                            ));
                             game.next_turn();
                             let body = serde_json::to_string(&serde_json::json!({"current_turn_player": game.current_turn_player})).unwrap();
                             Ok(json_response(StatusCode::OK, body))
