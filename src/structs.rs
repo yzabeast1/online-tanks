@@ -201,6 +201,8 @@ pub struct GameState {
     pub active_cards: ActiveCards,
     #[serde(default)]
     pub pending_recycle: Option<PendingRecycle>,
+    #[serde(skip)]
+    pub death_discard_cards: Vec<Card>,
     pub chat_messages: Vec<ChatMessage>,
     pub game_settings: GameSettings,
 }
@@ -291,6 +293,7 @@ impl GameState {
             turn_state: TurnState::new(),
             active_cards: ActiveCards::new(),
             pending_recycle: None,
+            death_discard_cards: Vec::new(),
             chat_messages: Vec::new(),
             game_settings: game_settings,
         };
@@ -388,8 +391,8 @@ impl GameState {
                 self.push_server_chat_message(format!("Last Stand activated for {}", player_name));
             } else {
                 let player_name = self.players[player_index].name.clone();
-                self.push_server_chat_message(format!("{} died", player_name));
                 if self.game_settings.revive_others_with_heal {
+                    self.push_server_chat_message(format!("{} died", player_name));
                     self.players[player_index].health = 0;
                     self.discard_active_cards_for_player(&player_name);
                     if self.active_cards.no_shooting_played_by == player_index as isize {
@@ -402,6 +405,21 @@ impl GameState {
                         self.next_turn();
                     }
                 } else {
+                    let discarded_hand = self.players[player_index].hand.clone();
+                    let discarded_hand_names = discarded_hand
+                        .iter()
+                        .map(|card| card.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.death_discard_cards.extend(discarded_hand);
+                    if discarded_hand_names.is_empty() {
+                        self.push_server_chat_message(format!("{} died", player_name));
+                    } else {
+                        self.push_server_chat_message(format!(
+                            "{} died and discarded {}",
+                            player_name, discarded_hand_names
+                        ));
+                    }
                     self.remove_player(player_index, true);
                 }
             }

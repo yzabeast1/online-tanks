@@ -286,6 +286,36 @@ fn removed_card(before: &[Card], after: &[Card]) -> Option<Card> {
     None
 }
 
+fn remove_matching_cards(cards: &mut Vec<Card>, cards_to_remove: &[Card]) {
+    for card_to_remove in cards_to_remove {
+        if let Some(position) = cards.iter().position(|card| {
+            card.id == card_to_remove.id
+                && card.name == card_to_remove.name
+                && card.card_type == card_to_remove.card_type
+        }) {
+            cards.remove(position);
+        }
+    }
+}
+
+fn take_post_play_messages_since(game: &mut GameState, message_index: usize) -> Vec<ChatMessage> {
+    if message_index >= game.chat_messages.len() {
+        return Vec::new();
+    }
+
+    let mut post_play_messages = Vec::new();
+    let mut index = message_index;
+    while index < game.chat_messages.len() {
+        let message = &game.chat_messages[index].message;
+        if message.contains(" died") || message.starts_with("Last Stand activated for ") {
+            post_play_messages.push(game.chat_messages.remove(index));
+        } else {
+            index += 1;
+        }
+    }
+    post_play_messages
+}
+
 fn log_play_event(
     game: &mut GameState,
     joincode: &str,
@@ -664,10 +694,15 @@ fn play_card_response(
     }
 
     let discard_pile_len_before_play = game.discard_pile.len();
+    game.death_discard_cards.clear();
     game.players[player_index].hand.remove(card_index);
+    let chat_messages_len_before_play = game.chat_messages.len();
     (card.play)(&card, game, player_index, req);
+    let post_play_messages = take_post_play_messages_since(game, chat_messages_len_before_play);
 
     let mut discarded_cards: Vec<Card> = game.discard_pile[discard_pile_len_before_play..].to_vec();
+    let death_discard_cards = std::mem::take(&mut game.death_discard_cards);
+    remove_matching_cards(&mut discarded_cards, &death_discard_cards);
 
     match card.card_type {
         CardType::Shooting(_) => {
@@ -715,6 +750,7 @@ fn play_card_response(
         target_hand_before.as_deref(),
         target_hand_after.as_deref(),
     );
+    game.chat_messages.extend(post_play_messages);
 
     json_response(
         StatusCode::OK,
