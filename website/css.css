@@ -531,6 +531,8 @@ select option {
 }
 
 .start-game,
+#add-ai,
+#remove-ai,
 #leave-lobby,
 #spectate-when-dead,
 #rejoin-game,
@@ -538,6 +540,7 @@ select option {
     margin: 0 8px 12px 0;
 }
 
+#remove-ai,
 #leave-lobby,
 #spectate-when-dead,
 #rejoin-game,

@@ -205,6 +205,8 @@ pub struct GameState {
     pub death_discard_cards: Vec<Card>,
     pub chat_messages: Vec<ChatMessage>,
     pub game_settings: GameSettings,
+    #[serde(default)]
+    pub ai_count: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -259,6 +261,7 @@ impl LobbyState {
 pub struct PendingSuccessorLobby {
     pub preferred_host: String,
     pub game_settings: GameSettings,
+    pub ai_count: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -299,8 +302,12 @@ impl GameState {
         game_settings: GameSettings,
     ) -> Self {
         let mut players = Vec::new();
-        for name in player_names {
-            players.push(Player::new(name, game_settings));
+        let mut ai_count = 0;
+        for name in &player_names {
+            players.push(Player::new(name.clone(), game_settings));
+            if crate::ai::is_ai_player(name) {
+                ai_count += 1;
+            }
         }
 
         return GameState {
@@ -317,6 +324,7 @@ impl GameState {
             death_discard_cards: Vec::new(),
             chat_messages: Vec::new(),
             game_settings: game_settings,
+            ai_count,
         };
     }
 

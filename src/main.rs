@@ -1,3 +1,4 @@
+mod ai;
 mod cards;
 mod structs;
 use structs::*;
@@ -151,7 +152,7 @@ fn current_timestamp() -> usize {
     }
 }
 
-fn card_stays_active(card: &Card) -> bool {
+pub(crate) fn card_stays_active(card: &Card) -> bool {
     matches!(card.card_type, CardType::Shooting(ShootingType::Calculated))
         || card.id == "firing-filter"
         || card.id == "landmine"
@@ -301,7 +302,7 @@ fn removed_card(before: &[Card], after: &[Card]) -> Option<Card> {
     None
 }
 
-fn remove_matching_cards(cards: &mut Vec<Card>, cards_to_remove: &[Card]) {
+pub(crate) fn remove_matching_cards(cards: &mut Vec<Card>, cards_to_remove: &[Card]) {
     for card_to_remove in cards_to_remove {
         if let Some(position) = cards.iter().position(|card| {
             card.id == card_to_remove.id
@@ -313,7 +314,7 @@ fn remove_matching_cards(cards: &mut Vec<Card>, cards_to_remove: &[Card]) {
     }
 }
 
-fn take_post_play_messages_since(game: &mut GameState, message_index: usize) -> Vec<ChatMessage> {
+pub(crate) fn take_post_play_messages_since(game: &mut GameState, message_index: usize) -> Vec<ChatMessage> {
     if message_index >= game.chat_messages.len() {
         return Vec::new();
     }
@@ -331,7 +332,7 @@ fn take_post_play_messages_since(game: &mut GameState, message_index: usize) -> 
     post_play_messages
 }
 
-fn log_play_event(
+pub(crate) fn log_play_event(
     game: &mut GameState,
     joincode: &str,
     username: &str,
@@ -599,7 +600,7 @@ fn calculated_activation_targets(
     header_value(req, "target").into_iter().collect()
 }
 
-fn blocking_calculated_activation_filter(
+pub(crate) fn blocking_calculated_activation_filter(
     game: &GameState,
     active: &ActiveCalculatedShooting,
     req: &Request<Body>,
@@ -768,6 +769,7 @@ fn play_card_response(
         target_hand_after.as_deref(),
     );
     game.chat_messages.extend(post_play_messages);
+    crate::ai::run_ai_turns(game);
 
     json_response(
         StatusCode::OK,
@@ -855,6 +857,8 @@ fn choose_recycle_discard_response(
         "{} discarded {} for Recycle",
         username, discarded_card_name
     ));
+    crate::ai::process_recycle_choices_for_ais(game);
+    crate::ai::run_ai_turns(game);
 
     json_response(
         StatusCode::OK,
@@ -941,6 +945,7 @@ fn choose_recycle_card_response(
     };
     game.players[player_index].hand.push(recycled_card);
     game.push_server_chat_message(format!("{} recycled {}", username, recycled_card_name));
+    crate::ai::run_ai_turns(game);
 
     json_response(
         StatusCode::OK,
@@ -1011,6 +1016,7 @@ fn activate_calculated_shooting_response(
         game.turn_state.shooting_locked = true;
     }
     game.discard_pile.push(active.card_played);
+    crate::ai::run_ai_turns(game);
 
     json_response(
         StatusCode::OK,
@@ -1106,14 +1112,17 @@ fn create_successor_lobby_for_ended_game(
     let successor = {
         let games = lock_or_recover(&state.games, "games");
         match games.get(ended_joincode) {
-            Some(game) if game.alive_player_count() <= 1 => PendingSuccessorLobby {
-                preferred_host: game
-                    .players
-                    .first()
-                    .map(|player| player.name.clone())
-                    .unwrap_or_else(|| username.clone()),
-                game_settings: game.game_settings,
-            },
+            Some(game) if game.alive_player_count() <= 1 => {
+                let host = game.players.iter()
+                    .map(|p| p.name.clone())
+                    .find(|name| !crate::ai::is_ai_player(name))
+                    .unwrap_or_else(|| username.clone());
+                PendingSuccessorLobby {
+                    preferred_host: host,
+                    game_settings: game.game_settings,
+                    ai_count: game.ai_count,
+                }
+            }
             Some(_) => {
                 return Err(text_response(StatusCode::BAD_REQUEST, "game has not ended"));
             }
@@ -1133,6 +1142,9 @@ fn create_successor_lobby_for_ended_game(
         String::new(),
         successor.game_settings,
     );
+    for i in 0..successor.ai_count {
+        lobby.players.push(format!("AI {}", i + 1));
+    }
     if successor.preferred_host == username {
         lobby.clerk_identities.clear();
         lobby.clerk_pictures.clear();
@@ -1525,6 +1537,119 @@ async fn handle_request(
                 _ => Ok(text_response(StatusCode::BAD_REQUEST, "missing username")),
             }
         }
+        (&Method::POST, "/addAI") => {
+            let joincode = header_value(&req, "joincode");
+            let username = header_value(&req, "username");
+            let clerk_user_id = clerk_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
+            match (joincode, username) {
+                (Some(joincode), Some(username)) => {
+                    let joincode = resolve_joincode(&state, &joincode);
+                    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
+                    match lobbies.get_mut(&joincode) {
+                        Some(lobby) => {
+                            if lobby.players.first() != Some(&username) {
+                                return Ok(text_response(
+                                    StatusCode::FORBIDDEN,
+                                    "only the host can add AIs",
+                                ));
+                            }
+                            if !can_act_as_player(
+                                &lobby.clerk_identities,
+                                &username,
+                                clerk_user_id,
+                            ) {
+                                return Ok(text_response(
+                                    StatusCode::FORBIDDEN,
+                                    "not authorized",
+                                ));
+                            }
+
+                            // Generate AI name
+                            let mut ai_count = 1;
+                            loop {
+                                let name = format!("AI {}", ai_count);
+                                if !lobby.players.contains(&name) {
+                                    lobby.players.push(name);
+                                    break;
+                                }
+                                ai_count += 1;
+                            }
+
+                            Ok(text_response(StatusCode::OK, "AI added"))
+                        }
+                        None => Ok(text_response(
+                            StatusCode::NOT_FOUND,
+                            "lobby not found",
+                        )),
+                    }
+                }
+                _ => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing joincode or username",
+                )),
+            }
+        }
+        (&Method::POST, "/removeAI") => {
+            let joincode = header_value(&req, "joincode");
+            let username = header_value(&req, "username");
+            let clerk_user_id = clerk_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
+            match (joincode, username) {
+                (Some(joincode), Some(username)) => {
+                    let joincode = resolve_joincode(&state, &joincode);
+                    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
+                    match lobbies.get_mut(&joincode) {
+                        Some(lobby) => {
+                            if lobby.players.first() != Some(&username) {
+                                return Ok(text_response(
+                                    StatusCode::FORBIDDEN,
+                                    "only the host can remove AIs",
+                                ));
+                            }
+                            if !can_act_as_player(
+                                &lobby.clerk_identities,
+                                &username,
+                                clerk_user_id,
+                            ) {
+                                return Ok(text_response(
+                                    StatusCode::FORBIDDEN,
+                                    "not authorized",
+                                ));
+                            }
+
+                            // Find the last AI player in the lobby and remove it
+                            let ai_index = lobby.players.iter().rposition(|p| {
+                                p.to_lowercase().starts_with("ai ") || p.to_lowercase() == "ai"
+                            });
+
+                            match ai_index {
+                                Some(idx) => {
+                                    let removed_name = lobby.players.remove(idx);
+                                    lobby.clerk_identities.remove(&removed_name);
+                                    lobby.clerk_pictures.remove(&removed_name);
+                                    Ok(text_response(StatusCode::OK, "AI removed"))
+                                }
+                                None => Ok(text_response(
+                                    StatusCode::BAD_REQUEST,
+                                    "no AI to remove",
+                                )),
+                            }
+                        }
+                        None => Ok(text_response(
+                            StatusCode::NOT_FOUND,
+                            "lobby not found",
+                        )),
+                    }
+                }
+                _ => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing joincode or username",
+                )),
+            }
+        }
         (&Method::POST, "/joinGame") => {
             let username = header_value(&req, "username");
             let joincode = header_value(&req, "joincode");
@@ -1748,6 +1873,21 @@ async fn handle_request(
                                 lobby.players.remove(index);
                                 lobby.clerk_identities.remove(&username);
                                 lobby.clerk_pictures.remove(&username);
+                                if !lobby.players.is_empty() {
+                                    let first_player = &lobby.players[0];
+                                    if crate::ai::is_ai_player(first_player) {
+                                        let human_index = lobby.players.iter().position(|p| !crate::ai::is_ai_player(p));
+                                        match human_index {
+                                            Some(h_idx) => {
+                                                let human = lobby.players.remove(h_idx);
+                                                lobby.players.insert(0, human);
+                                            }
+                                            None => {
+                                                lobby.players.clear();
+                                            }
+                                        }
+                                    }
+                                }
                                 if lobby.players.is_empty() {
                                     lobbies.remove(&joincode);
                                 }
@@ -1918,6 +2058,7 @@ async fn handle_request(
                             );
                             game_state.chat_messages = lobby.chat_messages;
                             game_state.start_game();
+                            crate::ai::run_ai_turns(&mut game_state);
                             lock_or_recover(&state.games, "games")
                                 .insert(joincode.clone(), game_state);
                             lock_or_recover(&state.started_games, "started_games")
@@ -1994,6 +2135,7 @@ async fn handle_request(
                                 ended_turn_player_name
                             ));
                             game.next_turn();
+                            crate::ai::run_ai_turns(game);
                             let body = serde_json::to_string(&serde_json::json!({"current_turn_player": game.current_turn_player})).unwrap();
                             Ok(json_response(StatusCode::OK, body))
                         }
@@ -2185,6 +2327,21 @@ async fn handle_request(
                                     ));
                                 }
                                 lobby.players.remove(player_index);
+                                if !lobby.players.is_empty() {
+                                    let first_player = &lobby.players[0];
+                                    if crate::ai::is_ai_player(first_player) {
+                                        let human_index = lobby.players.iter().position(|p| !crate::ai::is_ai_player(p));
+                                        match human_index {
+                                            Some(h_idx) => {
+                                                let human = lobby.players.remove(h_idx);
+                                                lobby.players.insert(0, human);
+                                            }
+                                            None => {
+                                                lobby.players.clear();
+                                            }
+                                        }
+                                    }
+                                }
                                 if lobby.players.is_empty() {
                                     lobbies.remove(&joincode);
                                 } else {

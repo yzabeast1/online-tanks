@@ -3,6 +3,8 @@ document.getElementById('join-lobby').addEventListener('click', joinLobby);
 document.getElementById('show-deck-checkbox').addEventListener('click', toggleDeck)
 document.getElementById('leave-lobby').addEventListener('click', leaveLobby);
 document.getElementById('spectate').addEventListener('click', startSpectating)
+document.getElementById('add-ai').addEventListener('click', addAI);
+document.getElementById('remove-ai').addEventListener('click', removeAI);
 var playersInLobbyCooldown = 1000;
 var lobbyPlayersInterval = 0
 var lobbyStartedCheckCoooldown = 1000
@@ -171,8 +173,65 @@ function updateLobbySettingsVisibility(isVisible) {
     renderLobbySettingsMenu(isVisible);
 }
 
-function setStartGameVisible(isVisible) {
-    document.querySelector('.start-game').style.display = isVisible ? 'inline-block' : 'none';
+function updateLobbyButtons(isHost, data) {
+    const playerCount = data ? data.length : 0;
+    const startGameBtn = document.querySelector('.start-game');
+    if (startGameBtn) {
+        startGameBtn.style.display = (isHost && playerCount >= 2) ? 'inline-block' : 'none';
+    }
+    const addAiBtn = document.getElementById('add-ai');
+    if (addAiBtn) {
+        addAiBtn.style.display = isHost ? 'inline-block' : 'none';
+    }
+    const removeAiBtn = document.getElementById('remove-ai');
+    if (removeAiBtn) {
+        let hasAI = false;
+        if (data) {
+            hasAI = data.some(player => {
+                const playerName = typeof player === 'string' ? player : player.name;
+                return playerName && (playerName.toLowerCase().startsWith('ai ') || playerName.toLowerCase() === 'ai');
+            });
+        }
+        removeAiBtn.style.display = (isHost && hasAI) ? 'inline-block' : 'none';
+    }
+}
+async function addAI() {
+    const account = clerkAccountDetails();
+    const headers = {
+        'Content-Type': 'application/json',
+        'username': username,
+        'joincode': joincode,
+        ...clerkHeaders(account)
+    };
+    fetch(`https://${serverip}/addAI`, {
+        method: 'POST',
+        headers: headers
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('HTTPS failed');
+    })
+    .catch(error => {
+        console.error('HTTPS error adding AI:', error);
+    });
+}
+async function removeAI() {
+    const account = clerkAccountDetails();
+    const headers = {
+        'Content-Type': 'application/json',
+        'username': username,
+        'joincode': joincode,
+        ...clerkHeaders(account)
+    };
+    fetch(`https://${serverip}/removeAI`, {
+        method: 'POST',
+        headers: headers
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('HTTPS failed');
+    })
+    .catch(error => {
+        console.error('HTTPS error removing AI:', error);
+    });
 }
 function startSpectating() {
     spectating = true
@@ -189,7 +248,7 @@ function startSpectating() {
     document.querySelector('.menu-screen').style.display = 'none'
     document.querySelector('.lobby-screen').style.display = 'block'
     document.querySelector('.container').style.display = 'flex'
-    setStartGameVisible(false)
+    updateLobbyButtons(false, null)
     updateLobbySettingsVisibility(false);
     document.getElementById('lobby-show-code').innerText = "JoinCode: " + joincode
     lobbyPlayersInterval = setInterval(lobbyPlayers, playersInLobbyCooldown);
@@ -217,7 +276,7 @@ async function joinLobby() {
     document.querySelector('.menu-screen').style.display = 'none'
     document.querySelector('.lobby-screen').style.display = 'block'
     document.querySelector('.container').style.display = 'flex'
-    setStartGameVisible(false)
+    updateLobbyButtons(false, null)
     updateLobbySettingsVisibility(false);
     const headers = {
         'Content-Type': 'application/json',
@@ -259,7 +318,7 @@ async function newGame() {
     document.querySelector('.menu-screen').style.display = 'none'
     document.querySelector('.lobby-screen').style.display = 'block'
     document.querySelector('.container').style.display = 'flex'
-    setStartGameVisible(true)
+    updateLobbyButtons(true, [{ name: username }])
     updateLobbySettingsVisibility(true);
     const headers = {
         'Content-Type': 'application/json',
@@ -312,10 +371,10 @@ function lobbyPlayers() {
                 });
                 const fallbackHost = typeof data[0] === 'string' ? data[0] : data[0].name;
                 const isHostUsername = (hostUsername || fallbackHost) === username;
-                setStartGameVisible(isHostUsername && data.length >= 2 && !spectating);
+                updateLobbyButtons(isHostUsername && !spectating, data);
             } else {
                 console.warn('No messages found for this joincode.');
-                setStartGameVisible(false);
+                updateLobbyButtons(false, null);
                 updateLobbySettingsVisibility(false);
             }
         })
