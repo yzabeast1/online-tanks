@@ -228,6 +228,22 @@ fn format_play_event_message(
     current_player_health_before: isize,
     current_player_health_after: isize,
 ) -> String {
+    if card.id == "airstrike" {
+        let mut msg = format!("{} played Airstrike against {}", player, target_name.unwrap_or(""));
+        if !discarded_cards.is_empty() {
+            msg.push_str(&format!(
+                ", forcing them to discard {}",
+                format_discarded_cards(discarded_cards)
+            ));
+        }
+        if let Some(self_damage) =
+            damage_amount(current_player_health_before, current_player_health_after)
+        {
+            msg.push_str(&format!(", and took {} damage", self_damage));
+        }
+        return msg;
+    }
+
     let mut message = format!("{} played {}", player, card.name);
 
     if let Some(target_name) = target_name {

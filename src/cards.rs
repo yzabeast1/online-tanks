@@ -225,14 +225,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_new_model,
             count: 2,
         },
-        // Card {
-        //     name: "Airstrike".to_string(),
-        //     id: "airstrike".to_string(),
-        //     card_type: CardType::Event,
-        //     can_be_played: can_play_airstrike,
-        //     play: stub_play,
-        //     count: 1,
-        // },
+        Card {
+            name: "Airstrike".to_string(),
+            id: "airstrike".to_string(),
+            card_type: CardType::Event,
+            can_be_played: can_play_airstrike,
+            play: play_airstrike,
+            count: 1,
+        },
         Card {
             name: "Spray".to_string(),
             id: "spray".to_string(),
@@ -575,6 +575,53 @@ fn can_play_airstrike(_card: &Card, game_state: &GameState, req: &Request<Body>)
         return false;
     }
     return can_play_event(_card, game_state, req);
+}
+
+fn play_airstrike(
+    _card: &Card,
+    game_state: &mut GameState,
+    player_index: usize,
+    req: &Request<Body>,
+) {
+    let Some(target_name) = header_value(req, "target") else {
+        return;
+    };
+    let Some(target_index) = game_state.player_index_from_name(&target_name) else {
+        return;
+    };
+
+    let action = header_value(req, "airstrike_action");
+    let action_str = action.as_deref().unwrap_or("");
+
+    let target_hand_len = game_state.players[target_index].hand.len();
+    let chosen_action = if action_str == "reduce_to_three" || action_str == "discard_two" {
+        action_str
+    } else {
+        if target_hand_len > 4 {
+            "reduce_to_three"
+        } else {
+            "discard_two"
+        }
+    };
+
+    let num_to_discard = if chosen_action == "reduce_to_three" {
+        target_hand_len.saturating_sub(3)
+    } else {
+        target_hand_len.min(2)
+    };
+
+    let mut rng = thread_rng();
+    for _ in 0..num_to_discard {
+        let hand_len = game_state.players[target_index].hand.len();
+        if hand_len == 0 {
+            break;
+        }
+        let discard_card_index = rng.gen_range(0..hand_len);
+        let discarded_card = game_state.players[target_index].hand.remove(discard_card_index);
+        game_state.discard_pile.push(discarded_card);
+    }
+
+    game_state.damage_player(player_index, 3);
 }
 
 fn can_play_more_ammo(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool {
@@ -995,7 +1042,7 @@ fn play_aimed_missile(
     let calc_shot = ActiveCalculatedShooting {
         owner: game_state.players[player_index].name.clone(),
         turns_remaining: 2,
-        when_done: locked_on_when_done,
+        when_done: aimed_missile_when_done,
         card_played: card.clone(),
     };
 
@@ -1024,7 +1071,7 @@ fn play_locked_on(card: &Card, game_state: &mut GameState, player_index: usize, 
     let calc_shot = ActiveCalculatedShooting {
         owner: game_state.players[player_index].name.clone(),
         turns_remaining: 3,
-        when_done: aimed_missile_when_done,
+        when_done: locked_on_when_done,
         card_played: card.clone(),
     };
 

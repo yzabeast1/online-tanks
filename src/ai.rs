@@ -236,6 +236,19 @@ fn run_single_ai_turn(game: &mut GameState) {
                 if let Some(target) = targets.first() {
                     req.headers_mut().insert("target", hyper::header::HeaderValue::from_str(target).unwrap());
                 }
+            } else if card.id == "airstrike" {
+                let targets = get_ai_targets(game, &current_player_name);
+                if let Some(target) = targets.first() {
+                    req.headers_mut().insert("target", hyper::header::HeaderValue::from_str(target).unwrap());
+                    let target_player = game.player_by_name(target).unwrap();
+                    let target_hand_len = target_player.hand.len();
+                    let action = if target_hand_len > 4 {
+                        "reduce_to_three"
+                    } else {
+                        "discard_two"
+                    };
+                    req.headers_mut().insert("airstrike_action", hyper::header::HeaderValue::from_static(action));
+                }
             } else if card.id == "new-model" {
                 if let Some((c1, c2)) = find_two_shooting_cards_to_discard(&game.players[player_index].hand, i) {
                     req.headers_mut().insert("discardcard", hyper::header::HeaderValue::from_str(&c1).unwrap());

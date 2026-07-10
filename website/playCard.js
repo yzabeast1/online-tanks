@@ -109,6 +109,9 @@ function actionsForCard(card) {
     if (card.id === 'radar') {
         actions.push('radar_order');
     }
+    if (card.id === 'airstrike') {
+        actions.push('airstrike_choice');
+    }
 
     return actions;
 }
@@ -285,6 +288,8 @@ function triggerActions(actions) {
             createFiringFilterTypeDropdown();
         } else if (action == 'radar_order') {
             createRadarOrderControls();
+        } else if (action == 'airstrike_choice') {
+            createAirstrikeChoiceDropdown();
         }
     });
 
@@ -470,6 +475,30 @@ function createFiringFilterTypeDropdown() {
     popupContent.appendChild(dropdown);
     popupContent.appendChild(document.createElement('br'))
 }
+function createAirstrikeChoiceDropdown() {
+    const popupContent = document.getElementById('popupContent');
+    const label = document.createElement('label');
+    label.innerText = 'Choose an action for opponent: ';
+    popupContent.appendChild(label);
+
+    const dropdown = document.createElement('select');
+    dropdown.id = 'airstrikeChoiceDropdown';
+    dropdown.innerHTML = '';
+
+    const options = [
+        { value: 'reduce_to_three', text: 'Lose cards until 3 left' },
+        { value: 'discard_two', text: 'Discard 2 cards' }
+    ];
+    options.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.text = opt.text;
+        dropdown.appendChild(option);
+    });
+
+    popupContent.appendChild(dropdown);
+    popupContent.appendChild(document.createElement('br'));
+}
 function createPlayerSelectPopup(card = deck.find(item => item.id === cardSelected)) {
     const popupContent = document.getElementById('popupContent');
 
@@ -579,6 +608,7 @@ function sendPlayedCardToServer() {
     }
     const queuedCard = document.getElementById('queuedCardDropdown')?.value
     const firingFilterType = document.getElementById('firingFilterTypeDropdown')?.value
+    const airstrikeChoice = document.getElementById('airstrikeChoiceDropdown')?.value
     const radarOrderValues = radarOrder();
     var headers = {
         joincode: joincode,
@@ -586,6 +616,7 @@ function sendPlayedCardToServer() {
         cardid: cardSelected
     }
     if (selectedPlayer) headers['target'] = selectedPlayer
+    if (airstrikeChoice) headers['airstrike_action'] = airstrikeChoice
     if (discardOptions[0]) headers['discardcard'] = discardOptions[0]
     if (discardOptions[1]) headers['discardcardtwo'] = discardOptions[1]
     if (queuedCard) headers['queuedcard'] = queuedCard
