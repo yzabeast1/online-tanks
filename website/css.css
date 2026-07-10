@@ -533,12 +533,14 @@ select option {
 .start-game,
 #leave-lobby,
 #spectate-when-dead,
+#rejoin-game,
 .end-turn {
     margin: 0 8px 12px 0;
 }
 
 #leave-lobby,
 #spectate-when-dead,
+#rejoin-game,
 .close,
 .close-btn {
     color: var(--text);

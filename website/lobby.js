@@ -16,6 +16,8 @@ const defaultLobbySettings = {
     play_heal_on_others: false,
     revive_others_with_heal: false,
 };
+let currentLobbySettings = { ...defaultLobbySettings };
+let isLobbyHost = false;
 
 function getLobbySettingsValue(id, fallback) {
     const element = document.getElementById(id);
@@ -49,13 +51,21 @@ function syncLobbySettingsMenuFromDefaults() {
     const playHealOnOthers = document.getElementById('lobby-play-heal-on-others');
     const reviveOthersWithHeal = document.getElementById('lobby-revive-others-with-heal');
 
-    if (handSize) handSize.value = defaultLobbySettings.starting_hand_size;
-    if (startingHealth) startingHealth.value = defaultLobbySettings.starting_health;
-    if (maxHealth) maxHealth.value = defaultLobbySettings.max_health;
-    if (playHealOnOthers) playHealOnOthers.checked = defaultLobbySettings.play_heal_on_others;
-    if (reviveOthersWithHeal) reviveOthersWithHeal.checked = defaultLobbySettings.revive_others_with_heal;
+    if (handSize) handSize.value = currentLobbySettings.starting_hand_size;
+    if (startingHealth) startingHealth.value = currentLobbySettings.starting_health;
+    if (maxHealth) maxHealth.value = currentLobbySettings.max_health;
+    if (playHealOnOthers) playHealOnOthers.checked = currentLobbySettings.play_heal_on_others;
+    if (reviveOthersWithHeal) reviveOthersWithHeal.checked = currentLobbySettings.revive_others_with_heal;
 
     syncLobbySettingsDependency();
+}
+
+function applyLobbySettings(settings) {
+    currentLobbySettings = {
+        ...defaultLobbySettings,
+        ...(settings || {}),
+    };
+    syncLobbySettingsMenuFromDefaults();
 }
 
 function syncLobbySettingsDependency() {
@@ -78,6 +88,26 @@ function syncLobbySettingsDependency() {
     }
 }
 
+function sendLobbySettingsToServer() {
+    if (!isLobbyHost) return;
+    const settings = readLobbySettings();
+    currentLobbySettings = { ...settings };
+    const account = clerkAccountDetails();
+    const headers = {
+        'Content-Type': 'application/json',
+        'joincode': joincode,
+        'username': username,
+        'settings': JSON.stringify(settings),
+        ...clerkHeaders(account)
+    };
+    fetch(`https://${serverip}/updateLobbySettings`, {
+        method: 'POST',
+        headers: headers
+    }).catch(error => {
+        console.error('Error updating lobby settings:', error);
+    });
+}
+
 function renderLobbySettingsMenu(isVisible) {
     const settingsEl = document.getElementById('lobby-settings-menu');
     if (!settingsEl) {
@@ -91,6 +121,7 @@ function renderLobbySettingsMenu(isVisible) {
 
     settingsEl.style.display = 'block';
     if (settingsEl.innerHTML.trim() !== '') {
+        syncLobbySettingsMenuFromDefaults();
         return;
     }
 
@@ -122,10 +153,17 @@ function renderLobbySettingsMenu(isVisible) {
     const playHealOnOthers = document.getElementById('lobby-play-heal-on-others');
     const reviveOthersWithHeal = document.getElementById('lobby-revive-others-with-heal');
     if (playHealOnOthers) {
-        playHealOnOthers.addEventListener('change', syncLobbySettingsDependency);
+        playHealOnOthers.addEventListener('change', () => { syncLobbySettingsDependency(); sendLobbySettingsToServer(); });
     }
     if (reviveOthersWithHeal) {
-        reviveOthersWithHeal.addEventListener('change', syncLobbySettingsDependency);
+        reviveOthersWithHeal.addEventListener('change', sendLobbySettingsToServer);
+    }
+
+    const settingsForm = document.getElementById('lobby-settings-form');
+    if (settingsForm) {
+        settingsForm.querySelectorAll('input[type="number"]').forEach(input => {
+            input.addEventListener('input', sendLobbySettingsToServer);
+        });
     }
 }
 
@@ -193,6 +231,8 @@ async function joinLobby() {
     })
         .then(response => {
             if (!response.ok) throw new Error('HTTPS failed'); // Handle HTTP errors
+            joincode = response.headers.get('joincode') || joincode
+            document.getElementById('joincode-input').value = joincode
             document.getElementById('lobby-show-code').innerText = "JoinCode: " + joincode
             loadMyClerkGames();
         })
@@ -254,10 +294,17 @@ function lobbyPlayers() {
         .then(response => {
             if (!response.ok) throw new Error('HTTPS failed');
             const hostUsername = response.headers.get('host-username');
-            return response.json().then(data => ({ data, hostUsername }));
+            const lobbySettingsHeader = response.headers.get('lobby-settings');
+            const lobbySettings = lobbySettingsHeader ? JSON.parse(lobbySettingsHeader) : null;
+            return response.json().then(data => ({ data, hostUsername, lobbySettings }));
         })
-        .then(({ data, hostUsername }) => {
-            updateLobbySettingsVisibility((hostUsername || '') === username && !spectating);
+        .then(({ data, hostUsername, lobbySettings }) => {
+            const isHost = (hostUsername || '') === username && !spectating;
+            isLobbyHost = isHost;
+            if (!isHost) {
+                applyLobbySettings(lobbySettings);
+            }
+            updateLobbySettingsVisibility(isHost);
             if (data && data.length > 0) {
                 clearLobbyPlayers();
                 data.forEach(player => {

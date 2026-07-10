@@ -1,6 +1,7 @@
 document.getElementById('start-game').addEventListener('click', startGame);
 document.getElementById('end-turn').addEventListener('click', endTurn)
 document.getElementById('spectate-when-dead').addEventListener('click', spectateGame)
+document.getElementById('rejoin-game').addEventListener('click', rejoinGame)
 let deck = [];  // Deck will be fetched from the server
 let gameData = {};  // Game data will be fetched from the server
 var renderedData = {}
@@ -87,10 +88,26 @@ function renderGame() {
         const myPlayer = myPlayerIndex === -1 ? null : gameData.players[myPlayerIndex];
         const isDead = !myPlayer || myPlayer.health <= 0;
         const alivePlayers = gameData.players.filter(player => player.health > 0);
+        const gameEnded = alivePlayers.length == 1;
 
-        if (isDead && !spectating) {
+        if (gameEnded) {
+            document.getElementById('dead').style.display = 'none'
+            document.getElementById('spectate-when-dead').style.display = 'none'
+            document.getElementById('win').style.display = "block"
+            document.getElementById('win').innerText = alivePlayers[0].name + " Wins"
+            document.getElementById('rejoin-game').style.display = 'inline-block'
+            document.getElementById('turn').style.display = 'none'
+            document.getElementById('end-turn').style.display = 'none'
+            document.getElementById('play-card').style.display = 'none'
+            document.getElementById('no-shooting').style.display = 'none'
+            document.getElementById('landmine').style.display = 'none'
+            const gameDiv = document.getElementById('game');
+            gameDiv.innerHTML = '';  // Clear the game div
+            renderedData = gameData
+        } else if (isDead && !spectating) {
             document.getElementById('dead').style.display = 'block'
             document.getElementById('spectate-when-dead').style.display = 'block'
+            document.getElementById('rejoin-game').style.display = 'none'
             document.getElementById('turn').style.display = 'none'
             document.getElementById('no-shooting').style.display = 'none'
             document.getElementById('landmine').style.display = 'none'
@@ -99,18 +116,9 @@ function renderGame() {
         } else {
             document.getElementById('dead').style.display = 'none'
             document.getElementById('spectate-when-dead').style.display = 'none'
-            if (alivePlayers.length == 1) {
-                document.getElementById('win').style.display = "block"
-                document.getElementById('win').innerText = alivePlayers[0].name + " Wins"
-                document.getElementById('turn').style.display = 'none'
-                document.getElementById('end-turn').style.display = 'none'
-                document.getElementById('no-shooting').style.display = 'none'
-                document.getElementById('landmine').style.display = 'none'
-                const gameDiv = document.getElementById('game');
-                gameDiv.innerHTML = '';  // Clear the game div
-            }
-            else {
+            document.getElementById('rejoin-game').style.display = 'none'
                 document.getElementById('win').style.display = "none"
+                document.getElementById('turn').style.display = ''
                 document.getElementById('turn').innerText = gameData.players[gameData.current_turn_player].name + "'s Turn"
                 if (gameData.players[gameData.current_turn_player].name == username) {
                     document.getElementById('end-turn').style.display = 'block'
@@ -248,7 +256,6 @@ function renderGame() {
                 }
                 showRecycleChoicePopup();
                 renderedData = gameData
-            }
         }
     }
 }
@@ -298,10 +305,49 @@ function startGame() {
 function joinStartedGame() {
     document.querySelector('.lobby-screen').style.display = 'none'
     document.querySelector('.game-screen').style.display = 'block'
+    document.getElementById('rejoin-game').style.display = 'none'
+    spectating = false
+    renderedData = {}
+    clearChatBox()
     fetchDeck();
     clearIntervals()
     chatInterval=setInterval(function() {fetchChatMessages(joincode)}, chatCooldown);
     gameStateInterval = setInterval(fetchGameState, gameStateCooldown);
+}
+function rejoinGame() {
+    const account = clerkAccountDetails();
+    const headers = {
+        'Content-Type': 'application/json',
+        joincode: joincode,
+        username: username,
+        ...clerkHeaders(account),
+    };
+
+    fetch(`https://${serverip}/rejoinGame`, {
+        method: 'POST',
+        headers: headers
+    })
+        .then(response => {
+            if (!response.ok) throw new Error('HTTPS failed');
+            joincode = response.headers.get('joincode') || joincode;
+            document.getElementById('joincode-input').value = joincode;
+            document.getElementById('lobby-show-code').innerText = "JoinCode: " + joincode;
+            document.querySelector('.game-screen').style.display = 'none';
+            document.querySelector('.lobby-screen').style.display = 'block';
+            document.querySelector('.container').style.display = 'flex';
+            document.getElementById('rejoin-game').style.display = 'none';
+            renderedData = {};
+            spectating = false;
+            clearIntervals();
+            lobbyPlayersInterval = setInterval(lobbyPlayers, playersInLobbyCooldown);
+            lobbyStartedCheckInterval = setInterval(lobbyStartedCheck, lobbyStartedCheckCoooldown);
+            lobbyPlayers();
+            startChat();
+            loadMyClerkGames();
+        })
+        .catch(error => {
+            console.error('HTTPS error:', error);
+        });
 }
 function endTurn() {
     postWithFallbackNoJSON(`https://${serverip}/endTurn`, {

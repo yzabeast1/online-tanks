@@ -222,10 +222,20 @@ pub struct LobbyState {
     #[serde(default)]
     pub clerk_pictures: HashMap<String, String>,
     pub chat_messages: Vec<ChatMessage>,
+    pub game_settings: GameSettings,
 }
 
 impl LobbyState {
     pub fn new(host: String, clerk_user_id: Option<String>, clerk_picture: String) -> Self {
+        Self::new_with_settings(host, clerk_user_id, clerk_picture, GameSettings::default())
+    }
+
+    pub fn new_with_settings(
+        host: String,
+        clerk_user_id: Option<String>,
+        clerk_picture: String,
+        game_settings: GameSettings,
+    ) -> Self {
         let mut clerk_identities = HashMap::new();
         if let Some(clerk_user_id) = clerk_user_id {
             clerk_identities.insert(host.clone(), clerk_user_id);
@@ -240,8 +250,15 @@ impl LobbyState {
             clerk_identities,
             clerk_pictures,
             chat_messages: Vec::new(),
+            game_settings,
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PendingSuccessorLobby {
+    pub preferred_host: String,
+    pub game_settings: GameSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -249,6 +266,8 @@ pub struct ServerState {
     pub lobbies: Mutex<HashMap<String, LobbyState>>,
     pub started_games: Mutex<HashSet<String>>,
     pub games: Mutex<HashMap<String, GameState>>,
+    pub joincode_redirects: Mutex<HashMap<String, String>>,
+    pub pending_successor_lobbies: Mutex<HashMap<String, PendingSuccessorLobby>>,
 }
 
 impl ServerState {
@@ -257,6 +276,8 @@ impl ServerState {
             lobbies: Mutex::new(HashMap::new()),
             started_games: Mutex::new(HashSet::new()),
             games: Mutex::new(HashMap::new()),
+            joincode_redirects: Mutex::new(HashMap::new()),
+            pending_successor_lobbies: Mutex::new(HashMap::new()),
         }
     }
 
@@ -618,4 +639,16 @@ pub struct GameSettings {
     pub max_health: isize,
     pub play_heal_on_others: bool,
     pub revive_others_with_heal: bool,
+}
+
+impl Default for GameSettings {
+    fn default() -> Self {
+        Self {
+            starting_hand_size: 4,
+            starting_health: 10,
+            max_health: 10,
+            play_heal_on_others: false,
+            revive_others_with_heal: false,
+        }
+    }
 }

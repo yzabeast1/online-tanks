@@ -19,6 +19,7 @@ function startChat() {
     // document.querySelector('.chat-container').style.display = 'flex';
 
     // Start fetching chat messages periodically
+    clearChatBox();
     chatInterval=setInterval(function() {fetchChatMessages(joincode)}, chatCooldown);
     fetchChatMessages(joincode);
 }

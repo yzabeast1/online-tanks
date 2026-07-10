@@ -118,6 +118,21 @@ fn text_response(status: StatusCode, body: impl Into<Body>) -> Response<Body> {
         .unwrap()
 }
 
+fn text_response_with_joincode(
+    status: StatusCode,
+    body: impl Into<Body>,
+    joincode: &str,
+) -> Response<Body> {
+    Response::builder()
+        .status(status)
+        .header("content-type", "text/plain; charset=utf-8")
+        .header("access-control-allow-origin", "*")
+        .header("access-control-expose-headers", "joincode")
+        .header("joincode", joincode)
+        .body(body.into())
+        .unwrap()
+}
+
 fn json_response(status: StatusCode, body: String) -> Response<Body> {
     Response::builder()
         .status(status)
@@ -618,6 +633,7 @@ fn play_card_response(
         );
     };
 
+    let joincode = resolve_joincode(state, &joincode);
     let mut games = lock_or_recover(&state.games, "games");
     let Some(game) = games.get_mut(&joincode) else {
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
@@ -700,7 +716,8 @@ fn play_card_response(
     (card.play)(&card, game, player_index, req);
     let post_play_messages = take_post_play_messages_since(game, chat_messages_len_before_play);
 
-    let mut discarded_cards: Vec<Card> = game.discard_pile[discard_pile_len_before_play..].to_vec();
+    let safe_start = discard_pile_len_before_play.min(game.discard_pile.len());
+    let mut discarded_cards: Vec<Card> = game.discard_pile[safe_start..].to_vec();
     let death_discard_cards = std::mem::take(&mut game.death_discard_cards);
     remove_matching_cards(&mut discarded_cards, &death_discard_cards);
 
@@ -794,6 +811,7 @@ fn choose_recycle_discard_response(
         );
     };
 
+    let joincode = resolve_joincode(state, &joincode);
     let mut games = lock_or_recover(&state.games, "games");
     let Some(game) = games.get_mut(&joincode) else {
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
@@ -861,6 +879,7 @@ fn choose_recycle_card_response(
         );
     };
 
+    let joincode = resolve_joincode(state, &joincode);
     let mut games = lock_or_recover(&state.games, "games");
     let Some(game) = games.get_mut(&joincode) else {
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
@@ -945,6 +964,7 @@ fn activate_calculated_shooting_response(
         );
     };
 
+    let joincode = resolve_joincode(state, &joincode);
     let mut games = lock_or_recover(&state.games, "games");
     let Some(game) = games.get_mut(&joincode) else {
         return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
@@ -1013,11 +1033,152 @@ fn generate_joincode() -> String {
 fn unique_joincode_for_state(state: &ServerState) -> String {
     let lobbies = lock_or_recover(&state.lobbies, "lobbies");
     let games = lock_or_recover(&state.games, "games");
+    let joincode_redirects = lock_or_recover(&state.joincode_redirects, "joincode_redirects");
     loop {
         let code = generate_joincode();
-        if !lobbies.contains_key(&code) && !games.contains_key(&code) {
+        if !lobbies.contains_key(&code)
+            && !games.contains_key(&code)
+            && !joincode_redirects.contains_key(&code)
+        {
             return code;
         }
+    }
+}
+
+fn resolve_joincode(state: &ServerState, joincode: &str) -> String {
+    let joincode_redirects = lock_or_recover(&state.joincode_redirects, "joincode_redirects");
+    resolve_joincode_with_redirects(&joincode_redirects, joincode)
+}
+
+fn resolve_joincode_with_redirects(
+    joincode_redirects: &std::collections::HashMap<String, String>,
+    joincode: &str,
+) -> String {
+    let mut resolved = joincode.to_string();
+    let mut seen = std::collections::HashSet::new();
+
+    while seen.insert(resolved.clone()) {
+        match joincode_redirects.get(&resolved) {
+            Some(next_joincode) => resolved = next_joincode.clone(),
+            None => break,
+        }
+    }
+
+    resolved
+}
+
+fn point_joincode_chain_to(state: &ServerState, old_joincode: &str, new_joincode: &str) {
+    let mut joincode_redirects = lock_or_recover(&state.joincode_redirects, "joincode_redirects");
+    for redirect_to in joincode_redirects.values_mut() {
+        if redirect_to == old_joincode {
+            *redirect_to = new_joincode.to_string();
+        }
+    }
+    joincode_redirects.insert(old_joincode.to_string(), new_joincode.to_string());
+}
+
+fn add_player_to_lobby(
+    lobby: &mut LobbyState,
+    username: String,
+    clerk_user_id: Option<String>,
+    clerk_picture: String,
+) {
+    if lobby.players.iter().any(|player| player == &username) {
+        return;
+    }
+
+    lobby.players.push(username.clone());
+    if let Some(clerk_user_id) = clerk_user_id {
+        lobby.clerk_identities.insert(username.clone(), clerk_user_id);
+        if !clerk_picture.is_empty() {
+            lobby.clerk_pictures.insert(username, clerk_picture);
+        }
+    }
+}
+
+fn create_successor_lobby_for_ended_game(
+    state: &ServerState,
+    ended_joincode: &str,
+    username: String,
+    clerk_user_id: Option<String>,
+    clerk_picture: String,
+) -> Result<String, Response<Body>> {
+    let successor = {
+        let games = lock_or_recover(&state.games, "games");
+        match games.get(ended_joincode) {
+            Some(game) if game.alive_player_count() <= 1 => PendingSuccessorLobby {
+                preferred_host: game
+                    .players
+                    .first()
+                    .map(|player| player.name.clone())
+                    .unwrap_or_else(|| username.clone()),
+                game_settings: game.game_settings,
+            },
+            Some(_) => {
+                return Err(text_response(StatusCode::BAD_REQUEST, "game has not ended"));
+            }
+            None => {
+                return Err(text_response(
+                    StatusCode::NOT_FOUND,
+                    "game not found for joincode",
+                ));
+            }
+        }
+    };
+
+    let new_joincode = unique_joincode_for_state(state);
+    let mut lobby = LobbyState::new_with_settings(
+        successor.preferred_host.clone(),
+        None,
+        String::new(),
+        successor.game_settings,
+    );
+    if successor.preferred_host == username {
+        lobby.clerk_identities.clear();
+        lobby.clerk_pictures.clear();
+        if let Some(clerk_user_id) = clerk_user_id.clone() {
+            lobby.clerk_identities.insert(username.clone(), clerk_user_id);
+            if !clerk_picture.is_empty() {
+                lobby.clerk_pictures.insert(username.clone(), clerk_picture.clone());
+            }
+        }
+    } else {
+        add_player_to_lobby(&mut lobby, username, clerk_user_id, clerk_picture);
+    }
+
+    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
+    lobbies.insert(new_joincode.clone(), lobby);
+    drop(lobbies);
+    lock_or_recover(
+        &state.pending_successor_lobbies,
+        "pending_successor_lobbies",
+    )
+    .insert(new_joincode.clone(), successor);
+    point_joincode_chain_to(state, ended_joincode, &new_joincode);
+
+    Ok(new_joincode)
+}
+
+fn apply_pending_successor_host(state: &ServerState, joincode: &str, lobby: &mut LobbyState) {
+    let pending_successors = lock_or_recover(
+        &state.pending_successor_lobbies,
+        "pending_successor_lobbies",
+    );
+    let Some(successor) = pending_successors.get(joincode) else {
+        return;
+    };
+
+    let Some(host_index) = lobby
+        .players
+        .iter()
+        .position(|player| player == &successor.preferred_host)
+    else {
+        return;
+    };
+
+    if host_index > 0 {
+        let host = lobby.players.remove(host_index);
+        lobby.players.insert(0, host);
     }
 }
 
@@ -1373,13 +1534,16 @@ async fn handle_request(
             let clerk_picture = clerk_picture_for_request(&req, clerk_identity.as_ref());
             match (username, joincode) {
                 (Some(username), Some(joincode)) => {
+                    let joincode = resolve_joincode(&state, &joincode);
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get_mut(&joincode) {
                         Some(lobby) => {
                             if lobby.players.iter().any(|player| player == &username) {
-                                Ok(text_response(
+                                apply_pending_successor_host(&state, &joincode, lobby);
+                                Ok(text_response_with_joincode(
                                     StatusCode::OK,
                                     "no duplicate usernames allowed",
+                                    &joincode,
                                 ))
                             } else {
                                 lobby.players.push(username.clone());
@@ -1391,11 +1555,98 @@ async fn handle_request(
                                         lobby.clerk_pictures.insert(username, clerk_picture);
                                     }
                                 }
-                                Ok(text_response(StatusCode::OK, "joined game lobby"))
+                                Ok(text_response_with_joincode(
+                                    StatusCode::OK,
+                                    "joined game lobby",
+                                    &joincode,
+                                ))
                             }
                         }
-                        None => Ok(text_response(StatusCode::OK, "game does not exist")),
+                        None => {
+                            drop(lobbies);
+                            let new_joincode = match create_successor_lobby_for_ended_game(
+                                &state,
+                                &joincode,
+                                username,
+                                clerk_user_id,
+                                clerk_picture,
+                            ) {
+                                Ok(new_joincode) => new_joincode,
+                                Err(response) if response.status() == StatusCode::BAD_REQUEST => {
+                                    return Ok(text_response(StatusCode::OK, "game does not exist"));
+                                }
+                                Err(response) if response.status() == StatusCode::NOT_FOUND => {
+                                    return Ok(text_response(StatusCode::OK, "game does not exist"));
+                                }
+                                Err(response) => return Ok(response),
+                            };
+
+                            Ok(text_response_with_joincode(
+                                StatusCode::OK,
+                                "joined game lobby",
+                                &new_joincode,
+                            ))
+                        }
                     }
+                }
+                _ => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing username or joincode",
+                )),
+            }
+        }
+        (&Method::POST, "/rejoinGame") => {
+            let username = header_value(&req, "username");
+            let joincode = header_value(&req, "joincode");
+            let clerk_user_id = clerk_identity
+                .as_ref()
+                .map(|identity| identity.user_id.clone());
+            let clerk_picture = clerk_picture_for_request(&req, clerk_identity.as_ref());
+            match (username, joincode) {
+                (Some(username), Some(joincode)) => {
+                    let resolved_joincode = resolve_joincode(&state, &joincode);
+
+                    {
+                        let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
+                        if let Some(lobby) = lobbies.get_mut(&resolved_joincode) {
+                            add_player_to_lobby(
+                                lobby,
+                                username.clone(),
+                                clerk_user_id.clone(),
+                                clerk_picture.clone(),
+                            );
+                            apply_pending_successor_host(&state, &resolved_joincode, lobby);
+
+                            return Ok(Response::builder()
+                                .status(StatusCode::OK)
+                                .header("content-type", "text/plain; charset=utf-8")
+                                .header("access-control-allow-origin", "*")
+                                .header("access-control-expose-headers", "joincode")
+                                .header("joincode", resolved_joincode.clone())
+                                .body(Body::from(resolved_joincode))
+                                .unwrap());
+                        }
+                    }
+
+                    let new_joincode = match create_successor_lobby_for_ended_game(
+                        &state,
+                        &resolved_joincode,
+                        username,
+                        clerk_user_id,
+                        clerk_picture,
+                    ) {
+                        Ok(new_joincode) => new_joincode,
+                        Err(response) => return Ok(response),
+                    };
+
+                    Ok(Response::builder()
+                        .status(StatusCode::OK)
+                        .header("content-type", "text/plain; charset=utf-8")
+                        .header("access-control-allow-origin", "*")
+                        .header("access-control-expose-headers", "joincode")
+                        .header("joincode", new_joincode.clone())
+                        .body(Body::from(new_joincode))
+                        .unwrap())
                 }
                 _ => Ok(text_response(
                     StatusCode::BAD_REQUEST,
@@ -1477,6 +1728,7 @@ async fn handle_request(
                 .map(|identity| identity.user_id.as_str());
             match (username, joincode) {
                 (Some(username), Some(joincode)) => {
+                    let joincode = resolve_joincode(&state, &joincode);
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get_mut(&joincode) {
                         Some(lobby) => {
@@ -1517,10 +1769,13 @@ async fn handle_request(
             let joincode = header_value(&req, "joincode");
             match joincode {
                 Some(joincode) => {
-                    let lobbies = lock_or_recover(&state.lobbies, "lobbies");
-                    match lobbies.get(&joincode) {
+                    let joincode = resolve_joincode(&state, &joincode);
+                    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
+                    match lobbies.get_mut(&joincode) {
                         Some(lobby) => {
+                            apply_pending_successor_host(&state, &joincode, lobby);
                             let host = lobby.players.first().cloned().unwrap_or_default();
+                            let settings = serde_json::to_string(&lobby.game_settings).unwrap();
                             let players: Vec<LobbyPlayerResponse> = lobby
                                 .players
                                 .iter()
@@ -1536,8 +1791,12 @@ async fn handle_request(
                                 .status(StatusCode::OK)
                                 .header("content-type", "application/json")
                                 .header("access-control-allow-origin", "*")
-                                .header("access-control-expose-headers", "host-username")
+                                .header(
+                                    "access-control-expose-headers",
+                                    "host-username, lobby-settings",
+                                )
                                 .header("host-username", host)
+                                .header("lobby-settings", settings)
                                 .body(Body::from(serde_json::to_string(&players).unwrap()))
                                 .unwrap())
                         }
@@ -1550,6 +1809,59 @@ async fn handle_request(
                 None => Ok(text_response(StatusCode::BAD_REQUEST, "missing joincode")),
             }
         }
+        (&Method::POST, "/updateLobbySettings") => {
+            let joincode = header_value(&req, "joincode");
+            let username = header_value(&req, "username");
+            let settings_str = header_value(&req, "settings");
+            let clerk_user_id = clerk_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
+            match (joincode, username, settings_str) {
+                (Some(joincode), Some(username), Some(settings_str)) => {
+                    let joincode = resolve_joincode(&state, &joincode);
+                    let settings: GameSettings = match serde_json::from_str(&settings_str) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            return Ok(text_response(
+                                StatusCode::BAD_REQUEST,
+                                "invalid settings",
+                            ));
+                        }
+                    };
+                    let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
+                    match lobbies.get_mut(&joincode) {
+                        Some(lobby) => {
+                            if lobby.players.first() != Some(&username) {
+                                return Ok(text_response(
+                                    StatusCode::FORBIDDEN,
+                                    "only the host can update settings",
+                                ));
+                            }
+                            if !can_act_as_player(
+                                &lobby.clerk_identities,
+                                &username,
+                                clerk_user_id,
+                            ) {
+                                return Ok(text_response(
+                                    StatusCode::FORBIDDEN,
+                                    "not authorized for host",
+                                ));
+                            }
+                            lobby.game_settings = settings;
+                            Ok(text_response(StatusCode::OK, "settings updated"))
+                        }
+                        None => Ok(text_response(
+                            StatusCode::NOT_FOUND,
+                            "lobby not found for joincode",
+                        )),
+                    }
+                }
+                _ => Ok(text_response(
+                    StatusCode::BAD_REQUEST,
+                    "missing joincode, username, or settings",
+                )),
+            }
+        }
         (&Method::POST, "/startGame") => {
             let joincode = header_value(&req, "joincode");
             let username = header_value(&req, "username");
@@ -1558,6 +1870,7 @@ async fn handle_request(
                 .map(|identity| identity.user_id.as_str());
             match (joincode, username) {
                 (Some(joincode), Some(username)) => {
+                    let joincode = resolve_joincode(&state, &joincode);
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
                     match lobbies.get(&joincode) {
                         Some(lobby) if lobby.players.len() < 2 => Ok(text_response(
@@ -1582,18 +1895,18 @@ async fn handle_request(
                                 "not authorized for host",
                             ))
                         }
-                        Some(_) => {
-                            let default_game_settings = "{\"starting_hand_size\":4,\"starting_health\":10,\"max_health\":10,\"play_heal_on_others\":false,\"revive_others_with_heal\":false}";
-                            let settings_str = header_value(&req, "settings")
-                                .unwrap_or(default_game_settings.to_string());
-                            let settings: GameSettings = match serde_json::from_str(&settings_str) {
-                                Ok(settings) => settings,
-                                Err(_) => {
-                                    return Ok(text_response(
-                                        StatusCode::BAD_REQUEST,
-                                        "invalid settings",
-                                    ));
-                                }
+                        Some(lobby) => {
+                            let settings = match header_value(&req, "settings") {
+                                Some(settings_str) => match serde_json::from_str(&settings_str) {
+                                    Ok(settings) => settings,
+                                    Err(_) => {
+                                        return Ok(text_response(
+                                            StatusCode::BAD_REQUEST,
+                                            "invalid settings",
+                                        ));
+                                    }
+                                },
+                                None => lobby.game_settings,
                             };
                             let lobby = lobbies.remove(&joincode).unwrap();
                             let mut game_state = GameState::new(
@@ -1609,6 +1922,11 @@ async fn handle_request(
                                 .insert(joincode.clone(), game_state);
                             lock_or_recover(&state.started_games, "started_games")
                                 .insert(joincode.clone());
+                            lock_or_recover(
+                                &state.pending_successor_lobbies,
+                                "pending_successor_lobbies",
+                            )
+                            .remove(&joincode);
                             Ok(text_response(StatusCode::OK, "Game Started"))
                         }
                         None => Ok(text_response(StatusCode::NOT_FOUND, "game does not exist")),
@@ -1622,6 +1940,7 @@ async fn handle_request(
             let joincode = header_value(&req, "joincode");
             match joincode {
                 Some(joincode) => {
+                    let joincode = resolve_joincode(&state, &joincode);
                     let started =
                         lock_or_recover(&state.started_games, "started_games").contains(&joincode);
                     Ok(text_response(
@@ -1640,6 +1959,7 @@ async fn handle_request(
                 .map(|identity| identity.user_id.as_str());
             match joincode {
                 Some(joincode) => {
+                    let joincode = resolve_joincode(&state, &joincode);
                     let mut games = lock_or_recover(&state.games, "games");
                     match games.get_mut(&joincode) {
                         Some(game) => {
@@ -1694,6 +2014,7 @@ async fn handle_request(
                 .map(|identity| identity.user_id.as_str());
             match joincode {
                 Some(joincode) => {
+                    let joincode = resolve_joincode(&state, &joincode);
                     let mut games = lock_or_recover(&state.games, "games");
                     match games.get_mut(&joincode) {
                         Some(game) => {
@@ -1725,6 +2046,7 @@ async fn handle_request(
 
             match (joincode, message) {
                 (Some(joincode), Some(message)) => {
+                    let joincode = resolve_joincode(&state, &joincode);
                     {
                         let mut games = lock_or_recover(&state.games, "games");
                         if let Some(game) = games.get_mut(&joincode) {
@@ -1774,6 +2096,7 @@ async fn handle_request(
             let joincode = header_value(&req, "joincode");
             match joincode {
                 Some(joincode) => {
+                    let joincode = resolve_joincode(&state, &joincode);
                     {
                         let games = lock_or_recover(&state.games, "games");
                         if let Some(game) = games.get(&joincode) {
@@ -1811,6 +2134,7 @@ async fn handle_request(
                 .map(|identity| identity.user_id.as_str());
             match (joincode, username) {
                 (Some(joincode), Some(username)) => {
+                    let joincode = resolve_joincode(&state, &joincode);
                     {
                         let mut games = lock_or_recover(&state.games, "games");
                         if let Some(game) = games.get_mut(&joincode) {
