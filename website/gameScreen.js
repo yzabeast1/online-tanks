@@ -101,6 +101,7 @@ function renderGame() {
             document.getElementById('play-card').style.display = 'none'
             document.getElementById('no-shooting').style.display = 'none'
             document.getElementById('landmine').style.display = 'none'
+            document.getElementById('card-play-status').style.display = 'none'
             const gameDiv = document.getElementById('game');
             gameDiv.innerHTML = '';  // Clear the game div
             renderedData = gameData
@@ -111,6 +112,7 @@ function renderGame() {
             document.getElementById('turn').style.display = 'none'
             document.getElementById('no-shooting').style.display = 'none'
             document.getElementById('landmine').style.display = 'none'
+            document.getElementById('card-play-status').style.display = 'none'
             const gameDiv = document.getElementById('game');
             gameDiv.innerHTML = '';  // Clear the game div
         } else {
@@ -127,6 +129,85 @@ function renderGame() {
                 else {
                     document.getElementById('end-turn').style.display = 'none'
                     document.getElementById('play-card').style.display = 'none'
+                }
+                const isMyTurn = gameData.players[gameData.current_turn_player].name == username;
+                const statusDiv = document.getElementById('card-play-status');
+                if (statusDiv) {
+                    if (isMyTurn) {
+                        statusDiv.style.display = 'block';
+                        statusDiv.innerHTML = '';
+
+                        // 1. Shooting
+                        const distractorMissilePlayed = gameData.turn_state.distractor_missile_played || 0;
+                        const maxShooting = distractorMissilePlayed > 0
+                            ? gameData.turn_state.more_ammo_played
+                            : 1 + gameData.turn_state.more_ammo_played;
+                        const shootingAllowed = gameData.active_cards.no_shooting_played_by === -1 || gameData.players[gameData.active_cards.no_shooting_played_by].name === username;
+                        const shootingLocked = gameData.turn_state.shooting_locked;
+
+                        let shootingStatusText = "";
+                        let shootingClass = "yes";
+                        if (shootingLocked) {
+                            shootingStatusText = "Shooting: Locked (0 remaining)";
+                            shootingClass = "no";
+                        } else if (!shootingAllowed) {
+                            shootingStatusText = "Shooting: Blocked by No Shooting (0 remaining)";
+                            shootingClass = "no";
+                        } else {
+                            const remaining = Math.max(0, maxShooting - gameData.turn_state.shooting_card_played);
+                            shootingStatusText = `Shooting: ${remaining} remaining (played ${gameData.turn_state.shooting_card_played}/${maxShooting})`;
+                            shootingClass = remaining > 0 ? "yes" : "no";
+                        }
+
+                        // 2. Event
+                        let eventStatusText = "";
+                        let eventClass = "yes";
+                        if (gameData.turn_state.event_card_played) {
+                            eventStatusText = "Event: 0 remaining (played 1/1)";
+                            eventClass = "no";
+                        } else {
+                            eventStatusText = "Event: 1 remaining (played 0/1)";
+                            eventClass = "yes";
+                        }
+
+                        // 3. More Ammo
+                        let ammoStatusText = "";
+                        let ammoClass = "yes";
+                        if (shootingLocked) {
+                            ammoStatusText = "More Ammo: Locked";
+                            ammoClass = "no";
+                        } else if (gameData.turn_state.event_card_played && gameData.turn_state.more_ammo_played === 0) {
+                            ammoStatusText = "More Ammo: Blocked (Event played)";
+                            ammoClass = "no";
+                        } else {
+                            ammoStatusText = `More Ammo: Playable (played ${gameData.turn_state.more_ammo_played})`;
+                            ammoClass = "yes";
+                        }
+
+                        // 4. Support
+                        const supportStatusText = "Support: Unlimited";
+                        const supportClass = "unlimited";
+
+                        // 5. Plus
+                        const plusStatusText = "Plus: Unlimited";
+                        const plusClass = "unlimited";
+
+                        const appendTag = (text, className) => {
+                            const span = document.createElement('span');
+                            span.className = `playable-tag ${className}`;
+                            span.innerText = text;
+                            statusDiv.appendChild(span);
+                        };
+
+                        appendTag(shootingStatusText, shootingClass);
+                        appendTag(eventStatusText, eventClass);
+                        appendTag(ammoStatusText, ammoClass);
+                        appendTag(supportStatusText, supportClass);
+                        appendTag(plusStatusText, plusClass);
+                    } else {
+                        statusDiv.style.display = 'none';
+                        statusDiv.innerHTML = '';
+                    }
                 }
                 if (gameData.active_cards.no_shooting_played_by !== -1) {
                     document.getElementById('no-shooting').style.display = 'block'

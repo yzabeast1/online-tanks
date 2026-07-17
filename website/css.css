@@ -605,6 +605,32 @@ label[for="show-deck-checkbox"] {
     font-size: 14px;
 }
 
+.playable-tag {
+    display: inline-block;
+    margin: 0 8px 14px 0;
+    border-radius: 999px;
+    padding: 7px 11px;
+    font-size: 14px;
+}
+
+.playable-tag.yes {
+    border: 1px solid rgba(95, 191, 118, 0.34);
+    color: #a3f0b4;
+    background: rgba(95, 191, 118, 0.12);
+}
+
+.playable-tag.no {
+    border: 1px solid rgba(217, 95, 75, 0.34);
+    color: #f0b0a3;
+    background: rgba(217, 95, 75, 0.12);
+}
+
+.playable-tag.unlimited {
+    border: 1px solid rgba(185, 178, 159, 0.34);
+    color: #f4efe0;
+    background: rgba(185, 178, 159, 0.12);
+}
+
 .player {
     margin-bottom: 18px;
     padding: 14px;

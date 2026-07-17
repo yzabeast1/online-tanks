@@ -80,8 +80,8 @@ function canPlayCardNow(card) {
     if (isDistractorMissile && (renderedData.turn_state.shooting_locked || !shootingAllowed || !hasQueuedDistractorTarget || renderedData.turn_state.shooting_card_played > renderedData.turn_state.more_ammo_played)) return false;
     if (isColdWar && renderedData.active_cards.active_calculated_shootings.length === 0) return false;
     if (isShooting && !isDistractorMissile && (renderedData.turn_state.shooting_locked || !shootingAllowed || renderedData.turn_state.shooting_card_played >= maxShooting)) return false;
-    if (card.id === 'more-ammo' && renderedData.turn_state.shooting_locked) return false;
-    if (isEvent && renderedData.turn_state.event_card_played) return false;
+    if (card.id === 'more-ammo' && (renderedData.turn_state.shooting_locked || (renderedData.turn_state.event_card_played && (renderedData.turn_state.more_ammo_played || 0) === 0))) return false;
+    if (isEvent && card.id !== 'more-ammo' && renderedData.turn_state.event_card_played) return false;
     if (['nuke', 'lottery'].includes(card.id) && renderedData.turn_state.total_cards_played > 0) return false;
 
     return true;
