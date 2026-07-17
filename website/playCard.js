@@ -48,6 +48,15 @@ function validTargetsForCard(card) {
         return gameData.players.filter(player => player.health > 0);
     }
 
+    if (card && card.id === 'steal') {
+        return gameData.players.filter(player =>
+            player.health > 0
+            && player.name !== username
+            && (player.hand_count ?? 0) > 0
+            && !firingFilterBlocksTarget(card, player.name)
+        );
+    }
+
     return gameData.players.filter(player =>
         player.health > 0
         && player.name !== username
@@ -60,29 +69,43 @@ function hasValidTargetsForCard(card) {
 }
 
 function canPlayCardNow(card) {
-    if (!card || !renderedData.players) return false;
+    if (!card || !gameData.players) return false;
 
     const isShooting = isShootingCard(card);
     const isEvent = card.card_type === 'Event';
     const isDistractorMissile = card.id === 'distractor-missile';
     const isColdWar = card.id === 'cold-war';
-    const distractorMissilePlayed = renderedData.turn_state.distractor_missile_played || 0;
+    const distractorMissilePlayed = gameData.turn_state.distractor_missile_played || 0;
     const maxShooting = distractorMissilePlayed > 0
-        ? renderedData.turn_state.more_ammo_played
-        : 1 + renderedData.turn_state.more_ammo_played;
-    const shootingAllowed = renderedData.active_cards.no_shooting_played_by === -1 || renderedData.players[renderedData.active_cards.no_shooting_played_by].name === username;
-    const isMyTurn = renderedData.players[renderedData.current_turn_player]?.name === username;
+        ? gameData.turn_state.more_ammo_played
+        : 1 + gameData.turn_state.more_ammo_played;
+    const shootingAllowed = gameData.active_cards.no_shooting_played_by === -1 || gameData.players[gameData.active_cards.no_shooting_played_by].name === username;
+    const isMyTurn = gameData.players[gameData.current_turn_player]?.name === username;
     const hasQueuedDistractorTarget = validQueuedCardsForDistractorMissile().length > 0;
 
     if (!isMyTurn) return false;
+    if (isHealingCard(card)) {
+        const maxHealth = gameData.game_settings?.max_health ?? 10;
+        const canHealOthers = gameData.game_settings?.play_heal_on_others;
+        if (!canHealOthers) {
+            const myPlayer = gameData.players.find(p => p.name === username);
+            if (!myPlayer || myPlayer.health >= maxHealth) {
+                return false;
+            }
+        } else {
+            if (!hasValidTargetsForCard(card)) {
+                return false;
+            }
+        }
+    }
     if (cardNeedsTarget(card) && !hasValidTargetsForCard(card)) return false;
-    if (card.id === 'recycle' && !renderedData.players.some(player => player.health > 0 && player.name !== username && player.hand_count > 0)) return false;
-    if (isDistractorMissile && (renderedData.turn_state.shooting_locked || !shootingAllowed || !hasQueuedDistractorTarget || renderedData.turn_state.shooting_card_played > renderedData.turn_state.more_ammo_played)) return false;
-    if (isColdWar && renderedData.active_cards.active_calculated_shootings.length === 0) return false;
-    if (isShooting && !isDistractorMissile && (renderedData.turn_state.shooting_locked || !shootingAllowed || renderedData.turn_state.shooting_card_played >= maxShooting)) return false;
-    if (card.id === 'more-ammo' && (renderedData.turn_state.shooting_locked || (renderedData.turn_state.event_card_played && (renderedData.turn_state.more_ammo_played || 0) === 0))) return false;
-    if (isEvent && card.id !== 'more-ammo' && renderedData.turn_state.event_card_played) return false;
-    if (['nuke', 'lottery'].includes(card.id) && renderedData.turn_state.total_cards_played > 0) return false;
+    if (card.id === 'recycle' && !gameData.players.some(player => player.health > 0 && player.name !== username && player.hand_count > 0)) return false;
+    if (isDistractorMissile && (gameData.turn_state.shooting_locked || !shootingAllowed || !hasQueuedDistractorTarget || gameData.turn_state.shooting_card_played > gameData.turn_state.more_ammo_played)) return false;
+    if (isColdWar && gameData.active_cards.active_calculated_shootings.length === 0) return false;
+    if (isShooting && !isDistractorMissile && (gameData.turn_state.shooting_locked || !shootingAllowed || gameData.turn_state.shooting_card_played >= maxShooting)) return false;
+    if (card.id === 'more-ammo' && (gameData.turn_state.shooting_locked || (gameData.turn_state.event_card_played && (gameData.turn_state.more_ammo_played || 0) === 0))) return false;
+    if (isEvent && card.id !== 'more-ammo' && gameData.turn_state.event_card_played) return false;
+    if (['nuke', 'lottery'].includes(card.id) && gameData.turn_state.total_cards_played > 0) return false;
 
     return true;
 }

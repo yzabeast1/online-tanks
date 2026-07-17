@@ -1091,3 +1091,15 @@ img {
 [class~="cl-button"] {
     background: unset;
 }
+
+
+/* Styling for unplayable cards */
+.card.unplayable {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.my-hand.card.unplayable:hover img,
+.my-hand.unplayable .card:hover img {
+    transform: none;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}

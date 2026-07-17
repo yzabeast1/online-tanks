@@ -308,9 +308,13 @@ function renderGame() {
                         cardDiv.appendChild(count);
                         handDiv.appendChild(cardDiv);
                     } else {
+                        const isMyTurn = gameData.players[gameData.current_turn_player]?.name === username;
                         playerData.hand.forEach((card) => {
                             const cardDiv = document.createElement('div');
                             cardDiv.classList.add('card');
+                            if (isMyTurn && !canPlayCardNow(card)) {
+                                cardDiv.classList.add('unplayable');
+                            }
 
                             const img = document.createElement('img');
                             img.src = `https://${serverip}/images/${cardImageFolder(card.card_type)}/${card.id}.png`;  // Use card ID to get the front image
