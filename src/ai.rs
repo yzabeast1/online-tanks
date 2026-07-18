@@ -289,6 +289,46 @@ fn run_single_ai_turn(game: &mut GameState) {
             }
 
             // Check if card can be played
+            if card.id == "more-ammo" {
+                if game.turn_state.shooting_card_played == 0 {
+                    continue;
+                }
+                game.turn_state.more_ammo_played += 1;
+                let mut has_another_playable_shooting = false;
+                for j in 0..hand_len {
+                    if j == i {
+                        continue;
+                    }
+                    let other_card = &game.players[player_index].hand[j];
+                    if other_card.card_type.is_shooting() {
+                        let mut other_req = Request::new(Body::empty());
+                        if other_card.id == "crack" || other_card.id == "dent" || other_card.id == "stolen-parts" {
+                            let targets = get_ai_attack_targets(game, &current_player_name, ShootingType::Quick);
+                            if let Some(target) = targets.first() {
+                                other_req.headers_mut().insert("target", hyper::header::HeaderValue::from_str(target).unwrap());
+                            }
+                        } else if other_card.id == "big-bomb" || other_card.id == "small-bomb" || other_card.id == "nuke" {
+                            let targets = get_ai_attack_targets(game, &current_player_name, ShootingType::Boom);
+                            if let Some(target) = targets.first() {
+                                other_req.headers_mut().insert("target", hyper::header::HeaderValue::from_str(target).unwrap());
+                            }
+                        } else if other_card.id == "distractor-missile" {
+                            if let Some(qc) = find_opponent_active_calculated_shooting(game, &current_player_name) {
+                                other_req.headers_mut().insert("queuedcard", hyper::header::HeaderValue::from_str(&qc).unwrap());
+                            }
+                        }
+                        if (other_card.can_be_played)(other_card, game, &other_req) {
+                            has_another_playable_shooting = true;
+                            break;
+                        }
+                    }
+                }
+                game.turn_state.more_ammo_played -= 1;
+                if !has_another_playable_shooting {
+                    continue;
+                }
+            }
+
             if (card.can_be_played)(&card, game, &req) {
                 // Play card!
                 let hand_before = game.players[player_index].hand.clone();
