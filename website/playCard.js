@@ -83,6 +83,7 @@ function canPlayCardNow(card) {
     const isMyTurn = gameData.players[gameData.current_turn_player]?.name === username;
     const hasQueuedDistractorTarget = validQueuedCardsForDistractorMissile().length > 0;
 
+    if (card.id === 'last-stand') return false;
     if (!isMyTurn) return false;
     if (isHealingCard(card)) {
         const maxHealth = gameData.game_settings?.max_health ?? 10;
