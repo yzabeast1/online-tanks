@@ -1029,8 +1029,8 @@ fn aimed_missile_when_done(
         return;
     };
 
-    game_state.damage_player(target_index, 3);
     game_state.push_server_chat_message(format!("Aimed Missile hit {} dealing 3 damage", target));
+    game_state.damage_player(target_index, 3);
 }
 
 fn play_aimed_missile(
@@ -1063,8 +1063,8 @@ fn locked_on_when_done(
         return;
     };
 
-    game_state.damage_player(target_index, 5);
     game_state.push_server_chat_message(format!("Locked On hit {} dealing 5 damage", target));
+    game_state.damage_player(target_index, 5);
 }
 
 fn play_locked_on(card: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
@@ -1136,11 +1136,11 @@ fn multi_strike_when_done(
 
     for allocation in allocations {
         if let Some(target_index) = game_state.player_index_from_name(&allocation.target) {
-            game_state.damage_player(target_index, allocation.damage);
             game_state.push_server_chat_message(format!(
                 "Multi Strike hit {} dealing {} damage",
                 allocation.target, allocation.damage
             ));
+            game_state.damage_player(target_index, allocation.damage);
         }
     }
 }
@@ -1189,9 +1189,9 @@ fn decision_missile_when_done(
         return;
     };
 
-    game_state.damage_player(target_index, 2);
     game_state
         .push_server_chat_message(format!("Decision Missile hit {} dealing 2 damage", target));
+    game_state.damage_player(target_index, 2);
 }
 
 fn play_decision_missile(
