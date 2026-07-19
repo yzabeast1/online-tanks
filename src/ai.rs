@@ -93,6 +93,12 @@ pub fn run_ai_turns(game: &mut GameState) {
         let current_player = &game.players[game.current_turn_player];
         if is_ai_player(&current_player.name) {
             run_single_ai_turn(game);
+
+            // Recycle must finish collecting every discard before this AI can
+            // choose a card, continue its hand, or end its turn.
+            if game.pending_recycle.is_some() {
+                break;
+            }
             
             // Wait, after running the turn, check if the game ended.
             if game.alive_player_count() <= 1 {
