@@ -229,7 +229,11 @@ fn format_play_event_message(
     current_player_health_after: isize,
 ) -> String {
     if card.id == "airstrike" {
-        let mut msg = format!("{} played Airstrike against {}", player, target_name.unwrap_or(""));
+        let mut msg = format!(
+            "{} played Airstrike against {}",
+            player,
+            target_name.unwrap_or("")
+        );
         if !discarded_cards.is_empty() {
             msg.push_str(&format!(
                 ", forcing them to discard {}",
@@ -330,7 +334,10 @@ pub(crate) fn remove_matching_cards(cards: &mut Vec<Card>, cards_to_remove: &[Ca
     }
 }
 
-pub(crate) fn take_post_play_messages_since(game: &mut GameState, message_index: usize) -> Vec<ChatMessage> {
+pub(crate) fn take_post_play_messages_since(
+    game: &mut GameState,
+    message_index: usize,
+) -> Vec<ChatMessage> {
     if message_index >= game.chat_messages.len() {
         return Vec::new();
     }
@@ -634,6 +641,150 @@ pub(crate) fn blocking_calculated_activation_filter(
         })
 }
 
+#[derive(Deserialize)]
+struct ArmorConfigSelection {
+    #[serde(default = "default_true")]
+    enabled: bool,
+    threshold: isize,
+    discard_card_id: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn configure_armor_response(
+    req: &Request<Body>,
+    state: &Arc<ServerState>,
+    clerk_user_id: Option<&str>,
+) -> Response<Body> {
+    let joincode = header_value(req, "joincode");
+    let username = header_value(req, "username");
+    let enabled_str = header_value(req, "armor_enabled");
+    let armor_configs = header_value(req, "armor_configs");
+    let threshold_str = header_value(req, "armor_threshold");
+    let discard_card_id = header_value(req, "armor_discard_card_id");
+
+    let (Some(joincode), Some(username)) = (joincode, username) else {
+        return text_response(StatusCode::BAD_REQUEST, "missing joincode or username");
+    };
+
+    let joincode = resolve_joincode(state, &joincode);
+    let mut games = lock_or_recover(&state.games, "games");
+    let Some(game) = games.get_mut(&joincode) else {
+        return text_response(StatusCode::NOT_FOUND, "game not found for joincode");
+    };
+
+    if !can_act_as_player(&game.clerk_identities, &username, clerk_user_id) {
+        return text_response(StatusCode::FORBIDDEN, "not authorized for player");
+    }
+
+    let Some(player_index) = game.players.iter().position(|p| p.name == username) else {
+        return text_response(StatusCode::NOT_FOUND, "player not found in game");
+    };
+
+    let player_health = game.players[player_index].health;
+    let player_hand = game.players[player_index].hand.clone();
+
+    if player_health <= 0 {
+        return text_response(StatusCode::BAD_REQUEST, "player is dead");
+    }
+
+    let enabled = enabled_str.as_deref() == Some("true");
+
+    // Remove any existing config for this player
+    game.armor_configs.retain(|c| c.player != username);
+
+    if enabled {
+        let selections = if let Some(armor_configs) = armor_configs {
+            match serde_json::from_str::<Vec<ArmorConfigSelection>>(&armor_configs) {
+                Ok(selections) => selections,
+                Err(_) => return text_response(StatusCode::BAD_REQUEST, "invalid armor_configs"),
+            }
+        } else {
+            let Some(discard_card_id) = discard_card_id else {
+                return text_response(StatusCode::BAD_REQUEST, "missing armor_discard_card_id");
+            };
+            let threshold = threshold_str
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+            vec![ArmorConfigSelection {
+                enabled: true,
+                threshold,
+                discard_card_id,
+            }]
+        };
+
+        let enabled_selections = selections
+            .iter()
+            .filter(|selection| selection.enabled)
+            .collect::<Vec<_>>();
+        let armor_count = player_hand.iter().filter(|c| c.id == "armor").count();
+        let armor_discard_count = enabled_selections
+            .iter()
+            .filter(|selection| selection.discard_card_id == "armor")
+            .count();
+
+        if selections.is_empty() {
+            return text_response(StatusCode::BAD_REQUEST, "missing armor configs");
+        }
+        if armor_count == 0 {
+            return text_response(StatusCode::BAD_REQUEST, "no armor card in hand");
+        }
+        if enabled_selections.len() > armor_count {
+            return text_response(StatusCode::BAD_REQUEST, "too many armor configs");
+        }
+        if enabled_selections.len() + armor_discard_count > armor_count {
+            return text_response(
+                StatusCode::BAD_REQUEST,
+                "not enough armor cards for selected discards",
+            );
+        }
+        if enabled_selections.iter().any(|selection| {
+            selection.threshold < 1
+                || !player_hand
+                    .iter()
+                    .any(|card| card.id == selection.discard_card_id)
+        }) {
+            return text_response(StatusCode::BAD_REQUEST, "invalid armor config");
+        }
+
+        let mut required_discards = std::collections::HashMap::<String, usize>::new();
+        for selection in &enabled_selections {
+            *required_discards
+                .entry(selection.discard_card_id.clone())
+                .or_insert(0) += 1;
+        }
+        for (discard_card_id, required_count) in required_discards {
+            let available_count = player_hand
+                .iter()
+                .filter(|card| card.id == discard_card_id)
+                .count();
+            if required_count > available_count {
+                return text_response(
+                    StatusCode::BAD_REQUEST,
+                    "not enough copies of selected discard card",
+                );
+            }
+        }
+
+        for selection in selections {
+            game.armor_configs.push(crate::structs::ArmorConfig {
+                player: username.clone(),
+                enabled: selection.enabled,
+                threshold: selection.threshold,
+                discard_card_id: selection.discard_card_id,
+            });
+        }
+    }
+
+    json_response(
+        StatusCode::OK,
+        serde_json::to_string(&serde_json::json!({"status": "ok"})).unwrap(),
+    )
+}
+
 fn play_card_response(
     req: &Request<Body>,
     state: &Arc<ServerState>,
@@ -785,6 +936,7 @@ fn play_card_response(
         target_hand_after.as_deref(),
     );
     game.chat_messages.extend(post_play_messages);
+    game.validate_armor_configs();
     crate::ai::run_ai_turns(game);
 
     json_response(
@@ -874,6 +1026,7 @@ fn choose_recycle_discard_response(
         username, discarded_card_name
     ));
     crate::ai::process_recycle_choices_for_ais(game);
+    game.validate_armor_configs();
     crate::ai::run_ai_turns(game);
 
     json_response(
@@ -961,6 +1114,7 @@ fn choose_recycle_card_response(
     };
     game.players[player_index].hand.push(recycled_card);
     game.push_server_chat_message(format!("{} recycled {}", username, recycled_card_name));
+    game.validate_armor_configs();
     crate::ai::run_ai_turns(game);
 
     json_response(
@@ -1032,6 +1186,7 @@ fn activate_calculated_shooting_response(
         game.turn_state.shooting_locked = true;
     }
     game.discard_pile.push(active.card_played);
+    game.validate_armor_configs();
     crate::ai::run_ai_turns(game);
 
     json_response(
@@ -1111,7 +1266,9 @@ fn add_player_to_lobby(
 
     lobby.players.push(username.clone());
     if let Some(clerk_user_id) = clerk_user_id {
-        lobby.clerk_identities.insert(username.clone(), clerk_user_id);
+        lobby
+            .clerk_identities
+            .insert(username.clone(), clerk_user_id);
         if !clerk_picture.is_empty() {
             lobby.clerk_pictures.insert(username, clerk_picture);
         }
@@ -1129,7 +1286,9 @@ fn create_successor_lobby_for_ended_game(
         let games = lock_or_recover(&state.games, "games");
         match games.get(ended_joincode) {
             Some(game) if game.alive_player_count() <= 1 => {
-                let host = game.players.iter()
+                let host = game
+                    .players
+                    .iter()
                     .map(|p| p.name.clone())
                     .find(|name| !crate::ai::is_ai_player(name))
                     .unwrap_or_else(|| username.clone());
@@ -1165,9 +1324,13 @@ fn create_successor_lobby_for_ended_game(
         lobby.clerk_identities.clear();
         lobby.clerk_pictures.clear();
         if let Some(clerk_user_id) = clerk_user_id.clone() {
-            lobby.clerk_identities.insert(username.clone(), clerk_user_id);
+            lobby
+                .clerk_identities
+                .insert(username.clone(), clerk_user_id);
             if !clerk_picture.is_empty() {
-                lobby.clerk_pictures.insert(username.clone(), clerk_picture.clone());
+                lobby
+                    .clerk_pictures
+                    .insert(username.clone(), clerk_picture.clone());
             }
         }
     } else {
@@ -1223,6 +1386,8 @@ struct GameStateResponse<'a> {
     active_cards: &'a ActiveCards,
     game_settings: &'a GameSettings,
     chat_messages: &'a [ChatMessage],
+    armor_configs: Vec<crate::structs::ArmorConfig>,
+    armor_disabled: bool,
 }
 
 #[derive(Serialize)]
@@ -1301,6 +1466,7 @@ fn game_state_response_for_player<'a>(
     game: &'a GameState,
     username: Option<&str>,
     clerk_user_id: Option<&str>,
+    armor_disabled: bool,
 ) -> GameStateResponse<'a> {
     let can_preview_radar = game
         .players
@@ -1355,6 +1521,16 @@ fn game_state_response_for_player<'a>(
         active_cards: &game.active_cards,
         game_settings: &game.game_settings,
         chat_messages: &game.chat_messages,
+        armor_configs: username
+            .map(|name| {
+                game.armor_configs
+                    .iter()
+                    .filter(|config| config.player == name)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default(),
+        armor_disabled,
     }
 }
 
@@ -1571,15 +1747,9 @@ async fn handle_request(
                                     "only the host can add AIs",
                                 ));
                             }
-                            if !can_act_as_player(
-                                &lobby.clerk_identities,
-                                &username,
-                                clerk_user_id,
-                            ) {
-                                return Ok(text_response(
-                                    StatusCode::FORBIDDEN,
-                                    "not authorized",
-                                ));
+                            if !can_act_as_player(&lobby.clerk_identities, &username, clerk_user_id)
+                            {
+                                return Ok(text_response(StatusCode::FORBIDDEN, "not authorized"));
                             }
 
                             // Generate AI name
@@ -1595,10 +1765,7 @@ async fn handle_request(
 
                             Ok(text_response(StatusCode::OK, "AI added"))
                         }
-                        None => Ok(text_response(
-                            StatusCode::NOT_FOUND,
-                            "lobby not found",
-                        )),
+                        None => Ok(text_response(StatusCode::NOT_FOUND, "lobby not found")),
                     }
                 }
                 _ => Ok(text_response(
@@ -1625,15 +1792,9 @@ async fn handle_request(
                                     "only the host can remove AIs",
                                 ));
                             }
-                            if !can_act_as_player(
-                                &lobby.clerk_identities,
-                                &username,
-                                clerk_user_id,
-                            ) {
-                                return Ok(text_response(
-                                    StatusCode::FORBIDDEN,
-                                    "not authorized",
-                                ));
+                            if !can_act_as_player(&lobby.clerk_identities, &username, clerk_user_id)
+                            {
+                                return Ok(text_response(StatusCode::FORBIDDEN, "not authorized"));
                             }
 
                             // Find the last AI player in the lobby and remove it
@@ -1648,16 +1809,12 @@ async fn handle_request(
                                     lobby.clerk_pictures.remove(&removed_name);
                                     Ok(text_response(StatusCode::OK, "AI removed"))
                                 }
-                                None => Ok(text_response(
-                                    StatusCode::BAD_REQUEST,
-                                    "no AI to remove",
-                                )),
+                                None => {
+                                    Ok(text_response(StatusCode::BAD_REQUEST, "no AI to remove"))
+                                }
                             }
                         }
-                        None => Ok(text_response(
-                            StatusCode::NOT_FOUND,
-                            "lobby not found",
-                        )),
+                        None => Ok(text_response(StatusCode::NOT_FOUND, "lobby not found")),
                     }
                 }
                 _ => Ok(text_response(
@@ -1714,10 +1871,16 @@ async fn handle_request(
                             ) {
                                 Ok(new_joincode) => new_joincode,
                                 Err(response) if response.status() == StatusCode::BAD_REQUEST => {
-                                    return Ok(text_response(StatusCode::OK, "game does not exist"));
+                                    return Ok(text_response(
+                                        StatusCode::OK,
+                                        "game does not exist",
+                                    ));
                                 }
                                 Err(response) if response.status() == StatusCode::NOT_FOUND => {
-                                    return Ok(text_response(StatusCode::OK, "game does not exist"));
+                                    return Ok(text_response(
+                                        StatusCode::OK,
+                                        "game does not exist",
+                                    ));
                                 }
                                 Err(response) => return Ok(response),
                             };
@@ -1892,7 +2055,10 @@ async fn handle_request(
                                 if !lobby.players.is_empty() {
                                     let first_player = &lobby.players[0];
                                     if crate::ai::is_ai_player(first_player) {
-                                        let human_index = lobby.players.iter().position(|p| !crate::ai::is_ai_player(p));
+                                        let human_index = lobby
+                                            .players
+                                            .iter()
+                                            .position(|p| !crate::ai::is_ai_player(p));
                                         match human_index {
                                             Some(h_idx) => {
                                                 let human = lobby.players.remove(h_idx);
@@ -1978,10 +2144,7 @@ async fn handle_request(
                     let settings: GameSettings = match serde_json::from_str(&settings_str) {
                         Ok(s) => s,
                         Err(_) => {
-                            return Ok(text_response(
-                                StatusCode::BAD_REQUEST,
-                                "invalid settings",
-                            ));
+                            return Ok(text_response(StatusCode::BAD_REQUEST, "invalid settings"));
                         }
                     };
                     let mut lobbies = lock_or_recover(&state.lobbies, "lobbies");
@@ -1993,11 +2156,8 @@ async fn handle_request(
                                     "only the host can update settings",
                                 ));
                             }
-                            if !can_act_as_player(
-                                &lobby.clerk_identities,
-                                &username,
-                                clerk_user_id,
-                            ) {
+                            if !can_act_as_player(&lobby.clerk_identities, &username, clerk_user_id)
+                            {
                                 return Ok(text_response(
                                     StatusCode::FORBIDDEN,
                                     "not authorized for host",
@@ -2176,10 +2336,23 @@ async fn handle_request(
                     let mut games = lock_or_recover(&state.games, "games");
                     match games.get_mut(&joincode) {
                         Some(game) => {
+                            let armor_disabled = username.as_deref().map_or(false, |name| {
+                                let pos = game
+                                    .armor_disabled_notifications
+                                    .iter()
+                                    .position(|n| n == name);
+                                if let Some(idx) = pos {
+                                    game.armor_disabled_notifications.remove(idx);
+                                    true
+                                } else {
+                                    false
+                                }
+                            });
                             let body = serde_json::to_string(&game_state_response_for_player(
                                 game,
                                 username.as_deref(),
                                 clerk_user_id,
+                                armor_disabled,
                             ))
                             .unwrap();
                             Ok(json_response(StatusCode::OK, body))
@@ -2346,7 +2519,10 @@ async fn handle_request(
                                 if !lobby.players.is_empty() {
                                     let first_player = &lobby.players[0];
                                     if crate::ai::is_ai_player(first_player) {
-                                        let human_index = lobby.players.iter().position(|p| !crate::ai::is_ai_player(p));
+                                        let human_index = lobby
+                                            .players
+                                            .iter()
+                                            .position(|p| !crate::ai::is_ai_player(p));
                                         match human_index {
                                             Some(h_idx) => {
                                                 let human = lobby.players.remove(h_idx);
@@ -2416,6 +2592,12 @@ async fn handle_request(
                 .header("content-type", "application/json")
                 .body(Body::from("{}"))
                 .unwrap())
+        }
+        (&Method::POST, "/configureArmor") | (&Method::POST, "/configurearmor") => {
+            let clerk_user_id = clerk_identity
+                .as_ref()
+                .map(|identity| identity.user_id.as_str());
+            Ok(configure_armor_response(&req, &state, clerk_user_id))
         }
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)

@@ -312,7 +312,7 @@ function renderGame() {
                         playerData.hand.forEach((card) => {
                             const cardDiv = document.createElement('div');
                             cardDiv.classList.add('card');
-                            if (isMyTurn && !canPlayCardNow(card)) {
+                            if (card.id === 'armor' || (isMyTurn && !canPlayCardNow(card))) {
                                 cardDiv.classList.add('unplayable');
                             }
 
@@ -329,7 +329,13 @@ function renderGame() {
                         });
                     }
 
+                    // Armor configuration UI (only for own player with armor cards)
+                    if (isMyPlayer && playerData.hand.some(c => c.id === 'armor')) {
+                        playerDiv.appendChild(createArmorPanel());
+                    }
+
                     playerDiv.appendChild(handDiv);
+
                     if (isMyPlayer) {
                         gameDiv.appendChild(playerDiv);
                     } else {
@@ -340,6 +346,7 @@ function renderGame() {
                     gameDiv.appendChild(opponentGrid);
                 }
                 showRecycleChoicePopup();
+                handleArmorDisabledNotification();
                 renderedData = gameData
         }
     }
@@ -648,4 +655,250 @@ function activateCalculatedShootingHeaders(extraHeaders) {
     }
     postWithFallback(`https://${serverip}/activateCalculatedShooting`, headers)
     closePopup();  // Close the popup after playing the card
+}
+
+// ── Armor configuration ──────────────────────────────────────────────
+
+var lastArmorConfigs = [];
+
+function currentArmorConfigs() {
+    if (Array.isArray(gameData.armor_configs)) return gameData.armor_configs;
+    return gameData.armor_config ? [gameData.armor_config] : [];
+}
+
+function createArmorPanel() {
+    const panel = document.createElement('div');
+    panel.classList.add('armor-panel');
+
+    const configs = currentArmorConfigs();
+    const isEnabled = configs.length > 0;
+
+    // Sync last config from server state so defaults survive page reloads
+    if (isEnabled && (lastArmorConfigs.length === 0 || configs.length >= lastArmorConfigs.length)) {
+        lastArmorConfigs = configs.map(config => ({
+            enabled: config.enabled !== false,
+            threshold: config.threshold,
+            discard_card_id: config.discard_card_id,
+        }));
+    }
+
+    const header = document.createElement('div');
+    header.classList.add('armor-header');
+
+    const label = document.createElement('span');
+    label.classList.add('armor-label');
+    label.innerText = isEnabled ? `\u{1F6E1}\uFE0F Armor Armed (${configs.length})` : '\u{1F6E1}\uFE0F Armor';
+    header.appendChild(label);
+
+    if (isEnabled) {
+        const configureBtn = document.createElement('button');
+        configureBtn.type = 'button';
+        configureBtn.classList.add('armor-enable-btn');
+        configureBtn.innerText = 'Configure';
+        configureBtn.addEventListener('click', () => showArmorConfigPopup());
+        header.appendChild(configureBtn);
+
+        const disableBtn = document.createElement('button');
+        disableBtn.type = 'button';
+        disableBtn.classList.add('armor-disable-btn');
+        disableBtn.innerText = 'Disable';
+        disableBtn.addEventListener('click', () => sendArmorConfig(false));
+        header.appendChild(disableBtn);
+
+        panel.appendChild(header);
+
+        const myPlayer = gameData.players.find(p => p.name === username);
+        const infoList = document.createElement('div');
+        infoList.classList.add('armor-info-list');
+        configs.forEach((config, index) => {
+            const info = document.createElement('div');
+            info.classList.add('armor-info');
+            const discardCardName = myPlayer
+                ?.hand.find(c => c.id === config.discard_card_id)?.name || config.discard_card_id;
+            const status = config.enabled === false ? 'off' : 'on';
+            info.innerText = `#${index + 1} (${status}): ${config.threshold}+ damage \u2022 discard ${discardCardName}`;
+            infoList.appendChild(info);
+        });
+        panel.appendChild(infoList);
+    } else {
+        const enableBtn = document.createElement('button');
+        enableBtn.type = 'button';
+        enableBtn.classList.add('armor-enable-btn');
+        enableBtn.innerText = 'Configure';
+        enableBtn.addEventListener('click', () => showArmorConfigPopup());
+        header.appendChild(enableBtn);
+
+        panel.appendChild(header);
+    }
+
+    return panel;
+}
+
+function showArmorConfigPopup() {
+    const popupContent = document.getElementById('popupContent');
+    popupContent.innerHTML = '';
+
+    const myPlayer = gameData.players.find(p => p.name === username);
+    if (!myPlayer) return;
+
+    const armorCount = myPlayer.hand.filter(card => card.id === 'armor').length;
+    const discardOptions = myPlayer.hand.filter(card => card && card.id !== 'armor');
+
+    if (armorCount === 0 || discardOptions.length === 0) {
+        const noCards = document.createElement('p');
+        noCards.innerText = 'You need at least one non-armor card to discard.';
+        noCards.style.color = 'var(--danger)';
+        popupContent.appendChild(noCards);
+
+        const playButton = document.getElementById('playCardBtn');
+        playButton.style.display = 'none';
+        setPopupRequired(false);
+        showPopup();
+        return;
+    }
+
+    for (let armorIndex = 0; armorIndex < armorCount; armorIndex++) {
+        const previous = lastArmorConfigs[armorIndex] || lastArmorConfigs[0] || null;
+        const defaultEnabled = previous?.enabled !== false;
+        const defaultThreshold = previous ? String(previous.threshold) : '1';
+        const defaultDiscardId = previous && myPlayer.hand.some(c => c.id === previous.discard_card_id)
+            ? previous.discard_card_id : null;
+
+        const row = document.createElement('div');
+        row.classList.add('armor-config-row');
+
+        const title = document.createElement('div');
+        title.classList.add('armor-config-title');
+        title.innerText = `Armor #${armorIndex + 1}`;
+        row.appendChild(title);
+
+        const enabledLabel = document.createElement('label');
+        enabledLabel.classList.add('armor-enabled-toggle');
+        const enabledInput = document.createElement('input');
+        enabledInput.type = 'checkbox';
+        enabledInput.classList.add('armor-enabled-checkbox');
+        enabledInput.checked = defaultEnabled;
+        enabledInput.addEventListener('change', syncArmorDiscardSelections);
+        enabledLabel.appendChild(enabledInput);
+        enabledLabel.appendChild(document.createTextNode('Enabled'));
+        row.appendChild(enabledLabel);
+
+        const threshLabel = document.createElement('label');
+        threshLabel.innerText = 'Minimum damage to activate:';
+        row.appendChild(threshLabel);
+
+        const threshInput = document.createElement('input');
+        threshInput.type = 'number';
+        threshInput.min = '1';
+        threshInput.max = '99';
+        threshInput.value = defaultThreshold;
+        threshInput.classList.add('armor-threshold-input');
+        row.appendChild(threshInput);
+
+        const discardLabel = document.createElement('label');
+        discardLabel.innerText = 'Card to discard when armor activates:';
+        row.appendChild(discardLabel);
+
+        const dropdown = document.createElement('select');
+        dropdown.classList.add('armor-discard-select');
+        discardOptions.forEach((card) => {
+            const option = document.createElement('option');
+            option.value = card.id;
+            option.text = card.name;
+            if (defaultDiscardId && card.id === defaultDiscardId) {
+                option.selected = true;
+            }
+            dropdown.appendChild(option);
+        });
+        dropdown.addEventListener('change', syncArmorDiscardSelections);
+        row.appendChild(dropdown);
+        popupContent.appendChild(row);
+    }
+
+    const playButton = document.getElementById('playCardBtn');
+    playButton.innerText = 'Arm Armor';
+    playButton.style.display = 'block';
+    playButton.disabled = false;
+    playButton.onclick = () => {
+        const configs = Array.from(document.querySelectorAll('.armor-config-row')).map(row => ({
+            enabled: row.querySelector('.armor-enabled-checkbox')?.checked !== false,
+            threshold: Number(row.querySelector('.armor-threshold-input')?.value || '1'),
+            discard_card_id: row.querySelector('select')?.value,
+        })).filter(config => config.discard_card_id);
+        if (configs.length === 0) return;
+        lastArmorConfigs = configs;
+        sendArmorConfig(true, configs);
+        playButton.innerText = 'Play Card';
+        setPopupRequired(false);
+        closePopup();
+    };
+
+    syncArmorDiscardSelections();
+    setPopupRequired(false);
+    showPopup();
+}
+
+function armorSelectedDiscardCounts() {
+    return Array.from(document.querySelectorAll('.armor-discard-select'))
+        .reduce((counts, dropdown) => {
+            const row = dropdown.closest('.armor-config-row');
+            const enabled = row?.querySelector('.armor-enabled-checkbox')?.checked !== false;
+            if (enabled && dropdown.value) counts[dropdown.value] = (counts[dropdown.value] || 0) + 1;
+            return counts;
+        }, {});
+}
+
+function syncArmorDiscardSelections() {
+    const myPlayer = gameData.players.find(p => p.name === username);
+    if (!myPlayer) return;
+
+    const availableCounts = myPlayer.hand
+        .filter(card => card && card.id !== 'armor')
+        .reduce((counts, card) => {
+            counts[card.id] = (counts[card.id] || 0) + 1;
+            return counts;
+        }, {});
+    const selectedCounts = armorSelectedDiscardCounts();
+
+    document.querySelectorAll('.armor-discard-select').forEach(dropdown => {
+        Array.from(dropdown.options).forEach(option => {
+            const selectedByOthers = (selectedCounts[option.value] || 0)
+                - (dropdown.value === option.value && dropdown.closest('.armor-config-row')?.querySelector('.armor-enabled-checkbox')?.checked !== false ? 1 : 0);
+            option.disabled = selectedByOthers >= (availableCounts[option.value] || 0);
+        });
+
+        if (dropdown.selectedOptions[0]?.disabled) {
+            const replacement = Array.from(dropdown.options).find(option => !option.disabled);
+            if (replacement) dropdown.value = replacement.value;
+        }
+    });
+
+    const finalCounts = armorSelectedDiscardCounts();
+    const isValid = Object.entries(finalCounts)
+        .every(([cardId, count]) => count <= (availableCounts[cardId] || 0));
+    const playButton = document.getElementById('playCardBtn');
+    if (playButton) playButton.disabled = !isValid;
+}
+
+function sendArmorConfig(enabled, configs) {
+    const headers = {
+        joincode: joincode,
+        username: username,
+        armor_enabled: enabled ? 'true' : 'false',
+        ...clerkHeaders(clerkAccountDetails()),
+    };
+    if (configs != null) headers.armor_configs = JSON.stringify(configs);
+
+    postWithFallback(`https://${serverip}/configureArmor`, headers);
+    renderedData = {};
+}
+
+function handleArmorDisabledNotification() {
+    if (gameData.armor_disabled) {
+        const notice = document.createElement('div');
+        notice.classList.add('armor-toast');
+        notice.innerText = 'Armor was automatically disabled (discard card no longer available)';
+        document.body.appendChild(notice);
+        setTimeout(() => notice.remove(), 4000);
+    }
 }

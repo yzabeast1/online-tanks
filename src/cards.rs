@@ -41,14 +41,14 @@ pub fn all_cards() -> Vec<Card> {
             play: play_repair_kit,
             count: 3,
         },
-        // Card {
-        //     name: "Armor".to_string(),
-        //     id: "armor".to_string(),
-        //     card_type: CardType::Support,
-        //     can_be_played: can_never_play,
-        //     play: stub_play,
-        //     count: 5,
-        // },
+        Card {
+            name: "Armor".to_string(),
+            id: "armor".to_string(),
+            card_type: CardType::Support,
+            can_be_played: can_never_play,
+            play: stub_play,
+            count: 5,
+        },
         Card {
             name: "Cold War".to_string(),
             id: "cold-war".to_string(),
@@ -617,11 +617,13 @@ fn play_airstrike(
             break;
         }
         let discard_card_index = rng.gen_range(0..hand_len);
-        let discarded_card = game_state.players[target_index].hand.remove(discard_card_index);
+        let discarded_card = game_state.players[target_index]
+            .hand
+            .remove(discard_card_index);
         game_state.discard_pile.push(discarded_card);
     }
 
-    game_state.damage_player(player_index, 3);
+    game_state.damage_player(player_index, 3, true);
 }
 
 fn can_play_more_ammo(_: &Card, game_state: &GameState, _: &Request<Body>) -> bool {
@@ -858,7 +860,7 @@ fn play_painful_draw(_: &Card, game_state: &mut GameState, player_index: usize, 
     game_state.draw_card(player_index);
     game_state.draw_card(player_index);
     game_state.draw_card(player_index);
-    game_state.damage_player(player_index, 2);
+    game_state.damage_player(player_index, 2, true);
 }
 fn play_more_ammo(_: &Card, game_state: &mut GameState, _: usize, _: &Request<Body>) {
     game_state.turn_state.more_ammo_played += 1;
@@ -924,11 +926,11 @@ fn play_health_hazard(_: &Card, game_state: &mut GameState, _: usize, req: &Requ
     target_player.health = thread_rng().gen_range(1..=max_health);
 }
 fn play_spray(_: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
-    for i in 1..game_state.players.len() {
+    for i in 0..game_state.players.len() {
         if i != player_index {
-            game_state.damage_player(i, 3);
+            game_state.damage_player(i, 3, i == player_index);
         } else {
-            game_state.damage_player(player_index, 2);
+            game_state.damage_player(player_index, 2, true);
         }
     }
 }
@@ -949,8 +951,8 @@ fn play_big_bomb(_: &Card, game_state: &mut GameState, player_index: usize, req:
     let Some(target_index) = game_state.player_index_from_name(&target) else {
         return;
     };
-    game_state.damage_player(target_index, 5);
-    game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize * 4);
+    game_state.damage_player(target_index, 5, target_index == player_index);
+    game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize * 4, true);
 }
 fn play_small_bomb(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
     let Some(target) = header_value(req, "target") else {
@@ -959,17 +961,17 @@ fn play_small_bomb(_: &Card, game_state: &mut GameState, player_index: usize, re
     let Some(target_index) = game_state.player_index_from_name(&target) else {
         return;
     };
-    game_state.damage_player(target_index, 3);
-    game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize);
+    game_state.damage_player(target_index, 3, target_index == player_index);
+    game_state.damage_player(player_index, thread_rng().gen_bool(0.5) as isize, true);
 }
-fn play_crack(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
+fn play_crack(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
     let Some(target) = header_value(req, "target") else {
         return;
     };
     let Some(target_index) = game_state.player_index_from_name(&target) else {
         return;
     };
-    game_state.damage_player(target_index, 2);
+    game_state.damage_player(target_index, 2, target_index == player_index);
 }
 fn play_stolen_parts(
     _: &Card,
@@ -983,17 +985,17 @@ fn play_stolen_parts(
     let Some(target_index) = game_state.player_index_from_name(&target) else {
         return;
     };
-    game_state.damage_player(target_index, 2);
+    game_state.damage_player(target_index, 2, target_index == player_index);
     game_state.heal_player(player_index, 1);
 }
-fn play_dent(_: &Card, game_state: &mut GameState, _: usize, req: &Request<Body>) {
+fn play_dent(_: &Card, game_state: &mut GameState, player_index: usize, req: &Request<Body>) {
     let Some(target) = header_value(req, "target") else {
         return;
     };
     let Some(target_index) = game_state.player_index_from_name(&target) else {
         return;
     };
-    game_state.damage_player(target_index, 1);
+    game_state.damage_player(target_index, 1, target_index == player_index);
 }
 fn play_firing_filter(
     card: &Card,
@@ -1019,7 +1021,7 @@ fn play_firing_filter(
 }
 fn aimed_missile_when_done(
     game_state: &mut GameState,
-    _: &ActiveCalculatedShooting,
+    active: &ActiveCalculatedShooting,
     req: &Request<Body>,
 ) {
     let Some(target) = header_value(req, "target") else {
@@ -1030,7 +1032,7 @@ fn aimed_missile_when_done(
     };
 
     game_state.push_server_chat_message(format!("Aimed Missile hit {} dealing 3 damage", target));
-    game_state.damage_player(target_index, 3);
+    game_state.damage_player(target_index, 3, target == active.owner);
 }
 
 fn play_aimed_missile(
@@ -1053,7 +1055,7 @@ fn play_aimed_missile(
 }
 fn locked_on_when_done(
     game_state: &mut GameState,
-    _: &ActiveCalculatedShooting,
+    active: &ActiveCalculatedShooting,
     req: &Request<Body>,
 ) {
     let Some(target) = header_value(req, "target") else {
@@ -1064,7 +1066,7 @@ fn locked_on_when_done(
     };
 
     game_state.push_server_chat_message(format!("Locked On hit {} dealing 5 damage", target));
-    game_state.damage_player(target_index, 5);
+    game_state.damage_player(target_index, 5, target == active.owner);
 }
 
 fn play_locked_on(card: &Card, game_state: &mut GameState, player_index: usize, _: &Request<Body>) {
@@ -1140,7 +1142,11 @@ fn multi_strike_when_done(
                 "Multi Strike hit {} dealing {} damage",
                 allocation.target, allocation.damage
             ));
-            game_state.damage_player(target_index, allocation.damage);
+            game_state.damage_player(
+                target_index,
+                allocation.damage,
+                allocation.target == active.owner,
+            );
         }
     }
 }
@@ -1191,7 +1197,7 @@ fn decision_missile_when_done(
 
     game_state
         .push_server_chat_message(format!("Decision Missile hit {} dealing 2 damage", target));
-    game_state.damage_player(target_index, 2);
+    game_state.damage_player(target_index, 2, target == active.owner);
 }
 
 fn play_decision_missile(

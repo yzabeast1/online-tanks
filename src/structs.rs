@@ -186,6 +186,14 @@ pub struct PendingRecycle {
     pub cards: Vec<Card>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ArmorConfig {
+    pub player: String,
+    pub enabled: bool,
+    pub threshold: isize,
+    pub discard_card_id: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GameState {
     pub players: Vec<Player>,
@@ -205,6 +213,10 @@ pub struct GameState {
     pub death_discard_cards: Vec<Card>,
     pub chat_messages: Vec<ChatMessage>,
     pub game_settings: GameSettings,
+    #[serde(default)]
+    pub armor_configs: Vec<ArmorConfig>,
+    #[serde(default)]
+    pub armor_disabled_notifications: Vec<String>,
     #[serde(default)]
     pub ai_count: usize,
 }
@@ -324,6 +336,8 @@ impl GameState {
             death_discard_cards: Vec::new(),
             chat_messages: Vec::new(),
             game_settings: game_settings,
+            armor_configs: Vec::new(),
+            armor_disabled_notifications: Vec::new(),
             ai_count,
         };
     }
@@ -388,17 +402,19 @@ impl GameState {
         self.draw_card(self.current_turn_player);
         if self.active_cards.landmine_played_by != -1 && rand::thread_rng().gen_bool(0.5) {
             let hit_player_name = self.players[self.current_turn_player].name.clone();
+            let landmine_owner = self.active_cards.landmine_played_by;
             self.active_cards.landmine_played_by = -1;
             if let Some(card) = self.active_cards.landmine_card.take() {
                 self.discard_pile.push(card);
                 self.push_server_chat_message("Landmine went out of play".to_string());
             }
             self.push_server_chat_message(format!("Landmine hit {}", hit_player_name));
-            self.damage_player(self.current_turn_player, 6);
+            let self_inflicted = landmine_owner == self.current_turn_player as isize;
+            self.damage_player(self.current_turn_player, 6, self_inflicted);
         }
     }
 
-    pub fn damage_player(&mut self, player_index: usize, damage: isize) {
+    pub fn damage_player(&mut self, player_index: usize, damage: isize, self_inflicted: bool) {
         if player_index >= self.players.len() {
             return;
         }
@@ -406,7 +422,15 @@ impl GameState {
             return;
         }
 
-        self.players[player_index].health -= damage;
+        let player_name = self.players[player_index].name.clone();
+        let mut effective_damage = damage;
+
+        // Armor does not activate on self-inflicted damage
+        if !self_inflicted {
+            effective_damage = self.apply_armor_reductions(player_index, effective_damage);
+        }
+
+        self.players[player_index].health -= effective_damage;
         let has_last_stand = self.players[player_index]
             .hand
             .iter()
@@ -414,16 +438,15 @@ impl GameState {
 
         if self.players[player_index].health < 1 {
             if let Some(last_stand_index) = has_last_stand {
-                let player_name = self.players[player_index].name.clone();
                 self.players[player_index].health = 1;
                 self.players[player_index].hand.remove(last_stand_index);
                 self.push_server_chat_message(format!("Last Stand activated for {}", player_name));
             } else {
-                let player_name = self.players[player_index].name.clone();
                 if self.game_settings.revive_others_with_heal {
                     self.push_server_chat_message(format!("{} died", player_name));
                     self.players[player_index].health = 0;
                     self.discard_active_cards_for_player(&player_name);
+                    self.armor_configs.retain(|c| c.player != player_name);
                     if self.active_cards.no_shooting_played_by == player_index as isize {
                         self.active_cards.no_shooting_played_by = -1;
                         if let Some(card) = self.active_cards.no_shooting_card.take() {
@@ -472,6 +495,121 @@ impl GameState {
             .count()
     }
 
+    pub fn validate_armor_configs(&mut self) {
+        let mut i = 0;
+        while i < self.armor_configs.len() {
+            let config = &self.armor_configs[i];
+            let player = self.players.iter().find(|p| p.name == config.player);
+            let valid = if let Some(player) = player {
+                let armor_count = player.hand.iter().filter(|c| c.id == "armor").count();
+                let configs_through_this_one = self.armor_configs[..=i]
+                    .iter()
+                    .filter(|other| other.player == config.player)
+                    .count();
+                let armor_discards_through_this_one = self.armor_configs[..=i]
+                    .iter()
+                    .filter(|other| {
+                        other.player == config.player && other.discard_card_id == "armor"
+                    })
+                    .count();
+                let has_discard = player.hand.iter().any(|c| c.id == config.discard_card_id);
+                player.health > 0
+                    && armor_count >= configs_through_this_one + armor_discards_through_this_one
+                    && has_discard
+            } else {
+                false
+            };
+            if !valid {
+                let config = self.armor_configs.remove(i);
+                if config.enabled {
+                    // Notification is private: included in next game state poll for this player
+                    self.armor_disabled_notifications
+                        .push(config.player.clone());
+                }
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    fn try_activate_single_armor(&mut self, player_index: usize, config_index: usize) -> bool {
+        let discard_id = self.armor_configs[config_index].discard_card_id.clone();
+        let armor_index = self.players[player_index]
+            .hand
+            .iter()
+            .position(|card| card.id == "armor");
+        let discard_index = self.players[player_index]
+            .hand
+            .iter()
+            .position(|card| card.id == discard_id);
+
+        let (Some(armor_index), Some(discard_index)) = (armor_index, discard_index) else {
+            return false;
+        };
+
+        let (first, second) = if armor_index > discard_index {
+            (armor_index, discard_index)
+        } else if armor_index < discard_index {
+            (discard_index, armor_index)
+        } else {
+            let second_armor = self.players[player_index]
+                .hand
+                .iter()
+                .enumerate()
+                .position(|(index, card)| index != armor_index && card.id == "armor");
+
+            match second_armor {
+                Some(second_armor) if second_armor > armor_index => (second_armor, armor_index),
+                Some(second_armor) => (armor_index, second_armor),
+                None => return false,
+            }
+        };
+
+        let removed_first = self.players[player_index].hand.remove(first);
+        self.discard_pile.push(removed_first);
+        let removed_second = self.players[player_index].hand.remove(second);
+        self.discard_pile.push(removed_second);
+        self.armor_configs.remove(config_index);
+        true
+    }
+
+    fn apply_armor_reductions(&mut self, player_index: usize, damage: isize) -> isize {
+        let player_name = self.players[player_index].name.clone();
+        let mut remaining_damage = damage;
+
+        loop {
+            let config_index = self
+                .armor_configs
+                .iter()
+                .position(|config| config.enabled && config.player == player_name);
+            let Some(config_index) = config_index else {
+                break;
+            };
+
+            if remaining_damage < self.armor_configs[config_index].threshold {
+                break;
+            }
+
+            if !self.try_activate_single_armor(player_index, config_index) {
+                break;
+            }
+
+            let new_damage = (remaining_damage - 3).max(0);
+            self.push_server_chat_message(format!(
+                "{} activated Armor reducing {} damage to {}",
+                player_name, remaining_damage, new_damage
+            ));
+            remaining_damage = new_damage;
+
+            if remaining_damage == 0 {
+                break;
+            }
+        }
+
+        self.validate_armor_configs();
+        remaining_damage
+    }
+
     fn discard_active_cards_for_player(&mut self, player_name: &str) {
         let mut active_firing_filters =
             std::mem::take(&mut self.active_cards.active_firing_filters);
@@ -507,6 +645,7 @@ impl GameState {
         let was_their_turn = self.current_turn_player == player_index;
 
         self.discard_active_cards_for_player(&player_name);
+        self.armor_configs.retain(|c| c.player != player_name);
 
         if self.active_cards.no_shooting_played_by == player_index as isize {
             self.active_cards.no_shooting_played_by = if self.players.len() > 1 {

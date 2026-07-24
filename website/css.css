@@ -1103,3 +1103,129 @@ img {
     transform: none;
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
 }
+
+/* Armor panel */
+.armor-panel {
+    margin-top: 12px;
+    margin-bottom: 14px;
+    border: 1px solid rgba(95, 191, 118, 0.24);
+    border-radius: 8px;
+    padding: 10px 14px;
+    background: rgba(95, 191, 118, 0.06);
+}
+
+.armor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.armor-label {
+    font-weight: 800;
+    font-size: 15px;
+    color: var(--text);
+}
+
+.armor-info {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.armor-info-list {
+    display: grid;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.armor-config-row {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid rgba(244, 239, 224, 0.14);
+    border-radius: 8px;
+    background: rgba(18, 22, 16, 0.54);
+}
+
+.armor-config-title {
+    color: var(--accent-strong);
+    font-size: 14px;
+    font-weight: 900;
+}
+
+.armor-enabled-toggle {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    margin: 0 !important;
+    color: var(--text) !important;
+    font-size: 14px !important;
+    text-transform: none;
+}
+
+.armor-enabled-checkbox {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--accent-strong);
+}
+
+.armor-enable-btn,
+.armor-disable-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+    min-height: auto;
+}
+
+.armor-disable-btn {
+    color: var(--text);
+    background: rgba(217, 95, 75, 0.14);
+    border-color: rgba(217, 95, 75, 0.45);
+    box-shadow: none;
+}
+
+.armor-threshold-input {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: var(--text);
+    background: rgba(8, 10, 8, 0.42);
+    outline: none;
+}
+
+.armor-threshold-input:focus {
+    border-color: rgba(240, 190, 95, 0.72);
+    box-shadow: 0 0 0 3px rgba(214, 168, 79, 0.16);
+}
+
+.armor-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    padding: 12px 20px;
+    border: 1px solid rgba(217, 95, 75, 0.5);
+    border-radius: 8px;
+    color: #f0b0a3;
+    background: rgba(30, 18, 16, 0.96);
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+    animation: armor-toast-in 300ms ease;
+}
+
+@keyframes armor-toast-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
