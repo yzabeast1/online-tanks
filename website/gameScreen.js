@@ -864,11 +864,12 @@ function syncArmorDiscardSelections() {
         Array.from(dropdown.options).forEach(option => {
             const selectedByOthers = (selectedCounts[option.value] || 0)
                 - (dropdown.value === option.value && dropdown.closest('.armor-config-row')?.querySelector('.armor-enabled-checkbox')?.checked !== false ? 1 : 0);
-            option.disabled = selectedByOthers >= (availableCounts[option.value] || 0);
+            option.hidden = selectedByOthers >= (availableCounts[option.value] || 0);
+            option.disabled = option.hidden;
         });
 
-        if (dropdown.selectedOptions[0]?.disabled) {
-            const replacement = Array.from(dropdown.options).find(option => !option.disabled);
+        if (dropdown.selectedOptions[0]?.hidden) {
+            const replacement = Array.from(dropdown.options).find(option => !option.hidden);
             if (replacement) dropdown.value = replacement.value;
         }
     });
