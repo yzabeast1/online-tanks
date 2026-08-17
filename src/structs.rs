@@ -10,6 +10,9 @@ pub struct ServerSettings {
     pub bind_ip: String,
     pub port: u16,
     pub connect_link: String,
+    /// When enabled, browser requests use connect_link without appending port.
+    #[serde(default)]
+    pub ignore_port: bool,
     #[serde(default = "default_clerk_issuer_url")]
     pub clerk_issuer_url: String,
 }
@@ -24,6 +27,7 @@ impl Default for ServerSettings {
             bind_ip: "0.0.0.0".to_string(),
             port: 443,
             connect_link: "localhost".to_string(),
+            ignore_port: false,
             clerk_issuer_url: default_clerk_issuer_url(),
         }
     }

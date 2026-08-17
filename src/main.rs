@@ -63,7 +63,7 @@ async fn serve_lobby_js(settings: &ServerSettings) -> Result<Response<Body>, Inf
     let path = format!("{}/lobby.js", WEBSITE_DIR);
     match tokio::fs::read_to_string(&path).await {
         Ok(contents) => {
-            let serverip = if settings.port == 443 {
+            let serverip = if settings.ignore_port || settings.port == 443 {
                 settings.connect_link.clone()
             } else {
                 format!("{}:{}", settings.connect_link, settings.port)
@@ -200,7 +200,7 @@ fn load_server_settings(settings_file_path: &str) -> ServerSettings {
 }
 
 fn server_connect_url(settings: &ServerSettings) -> String {
-    if settings.port == 443 {
+    if settings.ignore_port || settings.port == 443 {
         format!("https://{}", settings.connect_link)
     } else {
         format!("https://{}:{}", settings.connect_link, settings.port)
