@@ -107,6 +107,11 @@ function canPlayCardNow(card) {
     if (card.id === 'more-ammo' && (gameData.turn_state.shooting_locked || (gameData.turn_state.event_card_played && (gameData.turn_state.more_ammo_played || 0) === 0))) return false;
     if (isEvent && card.id !== 'more-ammo' && gameData.turn_state.event_card_played) return false;
     if (['nuke', 'lottery'].includes(card.id) && gameData.turn_state.total_cards_played > 0) return false;
+    if (card.id === 'new-model' && gameData.players) {
+        const myPlayer = gameData.players.find(p => p.name === username);
+        const shootingCardsInHand = myPlayer ? myPlayer.hand.filter(c => isShootingCard(c)).length : 0;
+        if (shootingCardsInHand < 2) return false;
+    }
 
     return true;
 }
